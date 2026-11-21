@@ -232,8 +232,8 @@
         </h2>
         <div class="flex items-center gap-1.5 text-[11px]">
           <span class="text-slate-400">チャイム尺:</span>
-          <input id="chimeCutDuration" type="range" min="0.6" max="2.5" step="0.1" value="1.3" oninput="updateCutDurationLabel()" class="w-16 accent-sky-500 cursor-pointer" />
-          <span id="chimeCutLabel" class="font-mono text-amber-300 font-bold w-8">1.3秒</span>
+          <input id="chimeCutDuration" type="range" min="0.6" max="3.0" step="0.1" value="2.0" oninput="updateCutDurationLabel()" class="w-16 accent-sky-500 cursor-pointer" />
+          <span id="chimeCutLabel" class="font-mono text-amber-300 font-bold w-8">2.0秒</span>
         </div>
       </div>
 
@@ -436,7 +436,7 @@
           currentChimeAudio = null;
         }
 
-        const cutSec = parseFloat(document.getElementById('chimeCutDuration').value) || 1.3;
+        const cutSec = parseFloat(document.getElementById('chimeCutDuration').value) || 2.0;
         const rawPath = CHIME_FILES[typeKey] || CHIME_FILES.fire;
         const audio = new Audio(encodeURI(rawPath));
         currentChimeAudio = audio;
@@ -1045,7 +1045,7 @@
       updateDispatchTexts();
     }
 
-    // 予告指令電文と本指令電文の同時自動組み立て
+    // 予告指令電文と本指令電文の自動組み立て
     function updateDispatchTexts() {
       const meta = DISASTER_TYPES[currentDisasterType];
       const address = document.getElementById('inputAddress').value.trim() || 'つくば市内、通報地点付近';
@@ -1060,11 +1060,13 @@
       const landmarkPart = landmark ? `目標、${landmark}。` : '';
       const unitsPart = unitNames ? `出動隊、${unitNames}。` : '出動隊、直近隊。';
 
-      const noticeText = `予告指令。${address}、${landmarkPart}${subType}。詳細聴取中。${unitNames || '直近隊'}、準備。`;
+      // STEP 3: 予告指令文
+      const noticeText = `予告指令。${address}、${landmarkPart}${subType}。詳細聴取中。${unitNames || '直近隊'}、準備。以上、つくば消防。`;
       document.getElementById('noticeDispatchText').value = noticeText;
 
+      // STEP 5: 本指令文（「本指令」を省き指令種別から開始・最後は「以上、つくば消防」）
       const memoShort = memo ? `${memo.slice(0, 48)}${memo.length > 48 ? '…' : ''}との通報。` : '';
-      const mainText = `本指令。${meta.directive}。${address}、${landmarkPart}${subType}。${memoShort}${unitsPart}以上、${meta.directive}。`;
+      const mainText = `${meta.directive}。${address}、${landmarkPart}${subType}。${memoShort}${unitsPart}以上、つくば消防。`;
       document.getElementById('mainDispatchText').value = mainText;
     }
 
