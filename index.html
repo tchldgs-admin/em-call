@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>統合消防通信指令システム（Yokohama Next-Gen Console）</title>
+  <title>つくば市消防本部 通信指令システム（TSUKUBA COMMAND MODEL）</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body {
@@ -36,7 +36,7 @@
       <div class="w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"></div>
       <div>
         <h1 class="text-base md:text-lg font-bold tracking-wider text-sky-300">
-          統合消防通信指令システム <span class="text-xs font-normal text-slate-400 ml-1">YOKOHAMA COMMAND MODEL</span>
+          つくば市消防本部 通信指令システム <span class="text-xs font-normal text-slate-400 ml-1">TSUKUBA COMMAND MODEL</span>
         </h1>
       </div>
       <span id="callStatusBadge" class="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
@@ -47,11 +47,11 @@
     <!-- 119番受令・終話・リセットコントロール -->
     <div class="flex flex-wrap items-center gap-2">
       <select id="scenarioSelect" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded px-2.5 py-1.5 focus:outline-none focus:border-sky-500">
-        <option value="fire_high">訓練1：中区本町 3階建ビル火災（黒煙・逃げ遅れ）</option>
-        <option value="ems_cpa">訓練2：西区みなとみらい 急病（意識なし・呼吸なし）</option>
-        <option value="rescue_trap">訓練3：神奈川区 乗用車単独事故（車内閉じ込め）</option>
-        <option value="ems_low">訓練4：南区 転倒による右足首痛（意識清明）</option>
-        <option value="fire_alarm">訓練5：中区山下町 自動火災報知設備鳴動（煙なし）</option>
+        <option value="fire_high">訓練1：吾妻1丁目 商業ビル火災（黒煙・逃げ遅れ）</option>
+        <option value="ems_cpa">訓練2：研究学園5丁目 急病（意識なし・呼吸なし）</option>
+        <option value="rescue_trap">訓練3：谷田部IC付近 乗用車衝突事故（車内閉じ込め）</option>
+        <option value="ems_low">訓練4：竹園2丁目 転倒による右足首痛（意識清明）</option>
+        <option value="fire_alarm">訓練5：天王台 研究施設自火報鳴動（煙なし）</option>
       </select>
 
       <button id="btnIncomingCall" onclick="triggerIncomingCall()" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-1.5 rounded shadow transition cursor-pointer">
@@ -104,14 +104,14 @@
         </div>
         <div class="col-span-2">
           <label class="block text-[11px] text-slate-400 mb-1">災害発生場所（住所）</label>
-          <input id="inputAddress" type="text" oninput="onManualInput()" placeholder="例：横浜市中区本町3丁目20番付近" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:border-sky-500 focus:outline-none" />
+          <input id="inputAddress" type="text" oninput="onManualInput()" placeholder="例：つくば市研究学園1丁目1番地付近" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:border-sky-500 focus:outline-none" />
         </div>
       </div>
 
       <div class="grid grid-cols-2 gap-2">
         <div>
           <label class="block text-[11px] text-slate-400 mb-1">目標物・建物名</label>
-          <input id="inputLandmark" type="text" oninput="onManualInput()" placeholder="例：〇〇ビル北側" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:border-sky-500 focus:outline-none" />
+          <input id="inputLandmark" type="text" oninput="onManualInput()" placeholder="例：つくば駅北側ビル" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:border-sky-500 focus:outline-none" />
         </div>
         <div>
           <label class="block text-[11px] text-slate-400 mb-1">災害詳細種別</label>
@@ -218,8 +218,8 @@
 
       <!-- AVM車両動態一覧ヘッダー -->
       <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 text-xs">
-        <span class="font-bold text-sky-400">AVM車両動態一覧</span>
-        <span id="standbyCountLabel" class="text-[11px] text-emerald-400 font-mono">出動可能: 12 / 12隊</span>
+        <span class="font-bold text-sky-400">つくば市消防本部 AVM車両動態一覧</span>
+        <span id="standbyCountLabel" class="text-[11px] text-emerald-400 font-mono">出動可能: 16 / 16隊</span>
       </div>
 
       <!-- AVM車両動態リスト -->
@@ -229,62 +229,66 @@
   </main>
 
   <script>
-    // 初期車両マスタ（横浜消防モデル）
+    // つくば市消防本部 車両マスタ（中央・桜・谷田部・大穂・豊里・茎崎）
     const DEFAULT_VEHICLES = [
-      { code: 'NAKA-P1', name: '中第1', station: '中消防署', type: 'pump', type_label: '水槽付ポンプ車', status: 'standby' },
-      { code: 'NAKA-P2', name: '中第2', station: '中消防署', type: 'pump', type_label: '小型ポンプ車', status: 'standby' },
-      { code: 'NAKA-L1', name: '中はしご1', station: '中消防署', type: 'ladder', type_label: '30m級はしご車', status: 'standby' },
-      { code: 'NAKA-C1', name: '中指揮1', station: '中消防署', type: 'command', type_label: '指揮車', status: 'standby' },
-      { code: 'NAKA-A1', name: '中救急1', station: '中消防署', type: 'ambulance', type_label: '高規格救急車', status: 'standby' },
-      { code: 'NISHI-P1', name: '西第1', station: '西消防署', type: 'pump', type_label: '水槽付ポンプ車', status: 'standby' },
-      { code: 'NISHI-A1', name: '西救急1', station: '西消防署', type: 'ambulance', type_label: '高規格救急車', status: 'standby' },
-      { code: 'MINAMI-P1', name: '南第1', station: '南消防署', type: 'pump', type_label: '水槽付ポンプ車', status: 'standby' },
-      { code: 'MINAMI-A1', name: '南救急1', station: '南消防署', type: 'ambulance', type_label: '高規格救急車', status: 'standby' },
-      { code: 'SR-R1', name: '機動第1（SR）', station: '特別高度救助部隊', type: 'rescue', type_label: '救助工作車Ⅲ型', status: 'standby' },
-      { code: 'SR-R2', name: '機動第2（SR）', station: '特別高度救助部隊', type: 'rescue', type_label: '機動けん引工作車', status: 'standby' },
-      { code: 'KITA-P1', name: '神奈川第1', station: '神奈川消防署', type: 'pump', type_label: '水槽付ポンプ車', status: 'standby' }
+      { code: 'CHUO-P1', name: '中央第1', station: '中央消防署', type: 'pump', type_label: '水槽付ポンプ車', status: 'standby' },
+      { code: 'CHUO-P2', name: '中央第2', station: '中央消防署', type: 'pump', type_label: '小型ポンプ車', status: 'standby' },
+      { code: 'CHUO-L1', name: '中央はしご1', station: '中央消防署', type: 'ladder', type_label: '35m級はしご車', status: 'standby' },
+      { code: 'CHUO-R1', name: '中央救助1', station: '中央消防署', type: 'rescue', type_label: '救助工作車Ⅲ型', status: 'standby' },
+      { code: 'CHUO-C1', name: '中央指揮1', station: '中央消防署', type: 'command', type_label: '指揮車', status: 'standby' },
+      { code: 'CHUO-A1', name: '中央救急1', station: '中央消防署', type: 'ambulance', type_label: '高規格救急車', status: 'standby' },
+      { code: 'CHUO-A2', name: '中央救急2', station: '中央消防署', type: 'ambulance', type_label: '高規格救急車', status: 'standby' },
+      { code: 'SAKURA-P1', name: '桜第1', station: '桜消防署', type: 'pump', type_label: '水槽付ポンプ車', status: 'standby' },
+      { code: 'SAKURA-A1', name: '桜救急1', station: '桜消防署', type: 'ambulance', type_label: '高規格救急車', status: 'standby' },
+      { code: 'YATABE-P1', name: '谷田部第1', station: '谷田部消防署', type: 'pump', type_label: '水槽付ポンプ車', status: 'standby' },
+      { code: 'YATABE-A1', name: '谷田部救急1', station: '谷田部消防署', type: 'ambulance', type_label: '高規格救急車', status: 'standby' },
+      { code: 'OHO-P1', name: '大穂第1', station: '大穂消防署', type: 'pump', type_label: '水槽付ポンプ車', status: 'standby' },
+      { code: 'OHO-A1', name: '大穂救急1', station: '大穂消防署', type: 'ambulance', type_label: '高規格救急車', status: 'standby' },
+      { code: 'TOYOSATO-P1', name: '豊里第1', station: '豊里消防署', type: 'pump', type_label: '水槽付ポンプ車', status: 'standby' },
+      { code: 'KUKIZAKI-P1', name: '茎崎第1', station: '茎崎消防署', type: 'pump', type_label: '水槽付ポンプ車', status: 'standby' },
+      { code: 'KUKIZAKI-A1', name: '茎崎救急1', station: '茎崎消防署', type: 'ambulance', type_label: '高規格救急車', status: 'standby' }
     ];
 
-    // 訓練シナリオ定義
+    // つくば市内 訓練シナリオ定義
     const SCENARIOS = {
       fire_high: {
         disasterType: 'fire',
         subType: '建物火災',
         callerType: '固定電話（住所特定）',
-        address: '横浜市中区本町3丁目20番付近',
-        landmark: '本町交差点北側ビル',
-        memo: '3階建てビルの2階窓から黒煙と炎が噴き出している。2階に1人逃げ遅れがいる模様。'
+        address: 'つくば市吾妻1丁目8番地付近',
+        landmark: 'つくば駅北側商業ビル',
+        memo: '4階建てビルの3階窓から黒煙と炎が噴き出している。3階に1人逃げ遅れがいる模様。'
       },
       ems_cpa: {
         disasterType: 'ems',
         subType: '急病',
         callerType: '携帯電話（GPS測位）',
-        address: '横浜市西区みなとみらい2丁目3番付近',
-        landmark: 'クイーンズスクエア1階通路',
+        address: 'つくば市研究学園5丁目19番地付近',
+        landmark: '研究学園駅前公園東側歩道',
         memo: '60代男性が突然倒れた。呼びかけに反応なく意識なし、呼吸もしていない。'
       },
       rescue_trap: {
         disasterType: 'rescue',
         subType: '交通事故救助',
         callerType: '携帯電話（GPS測位）',
-        address: '横浜市神奈川区鶴屋町2丁目15番付近',
-        landmark: '横浜駅きた西口高架下',
+        address: 'つくば市谷田部4700番地付近',
+        landmark: '常磐道谷田部インターチェンジ入口交差点',
         memo: '乗用車とトラックの衝突事故。乗用車のドアが変形し運転手が車内に閉じ込められている。'
       },
       ems_low: {
         disasterType: 'ems',
         subType: '一般負傷',
         callerType: '固定電話（住所特定）',
-        address: '横浜市南区吉野町4丁目12番付近',
-        landmark: '吉野町駅前商店街',
+        address: 'つくば市竹園2丁目10番地付近',
+        landmark: '竹園ショッピングセンター前',
         memo: '段差でつまずいて転倒し右足首を痛めた。意識清明で会話可能、出血なし。'
       },
       fire_alarm: {
         disasterType: 'fire',
         subType: '火災調査（自火報）',
         callerType: '固定電話（住所特定）',
-        address: '横浜市中区山下町70番付近',
-        landmark: '山下公園通りホテル',
+        address: 'つくば市天王台1丁目1番地付近',
+        landmark: '筑波大学筑波キャンパス研究棟',
         memo: '自動火災報知設備のベルが鳴動中。現在のところ煙や炎は確認できていない。'
       }
     };
@@ -310,7 +314,7 @@
       rescue: [
         { id: 'r_trap', label: '車内・機械への閉じ込め', keywords: ['閉じ込め', '挟まれ', '出られない'] },
         { id: 'r_traffic', label: '交通事故（衝突・転落）', keywords: ['事故', '衝突', '横転', '車両'] },
-        { id: 'r_high', label: '高所・水難・エレベータ', keywords: ['エレベータ', '転落', '川', '海', '高所'] },
+        { id: 'r_high', label: '高所・水難・エレベータ', keywords: ['エレベータ', '転落', '川', '沼', '高所'] },
         { id: 'r_leak', label: '燃料漏れ・二次災害危険', keywords: ['燃料', 'オイル', '漏', '煙'] }
       ]
     };
@@ -393,7 +397,7 @@
       }
     }
 
-    // 119番 擬似入電トリガー
+    // 119番 擬似入電トリガー（18Hz変調による日本の電話着信ベル音）
     function triggerIncomingCall() {
       const ctx = getAudioContext();
       stopRingtone();
@@ -401,25 +405,48 @@
       callState = 'ringing';
       updateCallControlButtons();
 
-      // 局線着信音（プルルル…）のループ再生
+      // 18Hz変調をかけた局線着信音（プルルルル…）のループ再生
       const playRingBurst = () => {
         const now = ctx.currentTime;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(400, now);
-        gain.gain.setValueAtTime(0.001, now);
-        gain.gain.exponentialRampToValueAtTime(0.15, now + 0.05);
-        gain.gain.setValueAtTime(0.15, now + 0.9);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 1.05);
+        const carrier1 = ctx.createOscillator();
+        const carrier2 = ctx.createOscillator();
+        const lfo = ctx.createOscillator();
+        const lfoGain = ctx.createGain();
+        const masterGain = ctx.createGain();
+
+        carrier1.type = 'sine';
+        carrier1.frequency.setValueAtTime(400, now);
+        carrier2.type = 'sine';
+        carrier2.frequency.setValueAtTime(480, now);
+
+        lfo.type = 'sine';
+        lfo.frequency.setValueAtTime(18, now);
+        lfoGain.gain.setValueAtTime(38, now);
+
+        lfo.connect(lfoGain);
+        lfoGain.connect(carrier1.frequency);
+        lfoGain.connect(carrier2.frequency);
+
+        masterGain.gain.setValueAtTime(0.001, now);
+        masterGain.gain.exponentialRampToValueAtTime(0.14, now + 0.03);
+        masterGain.gain.setValueAtTime(0.14, now + 0.95);
+        masterGain.gain.exponentialRampToValueAtTime(0.001, now + 1.02);
+
+        carrier1.connect(masterGain);
+        carrier2.connect(masterGain);
+        masterGain.connect(ctx.destination);
+
+        carrier1.start(now);
+        carrier2.start(now);
+        lfo.start(now);
+
+        carrier1.stop(now + 1.05);
+        carrier2.stop(now + 1.05);
+        lfo.stop(now + 1.05);
       };
 
       playRingBurst();
-      ringtoneInterval = setInterval(playRingBurst, 2200);
+      ringtoneInterval = setInterval(playRingBurst, 2400);
     }
 
     // 着信音停止
@@ -611,7 +638,7 @@
       if (currentDisasterType === 'fire') {
         if (isChecked('f_trapped') || isChecked('f_danger') || (isChecked('f_flame') && isChecked('f_building'))) {
           level = 'high';
-          scaleTitle = '建物火災 第2出動相当（特別高度救助編成）';
+          scaleTitle = '建物火災 第2出動相当（特別救助・はしご編成）';
           guidance = '【緊急避難指示】初期消火は行わず、姿勢を低くして直ちに建物外へ避難するよう伝えてください。';
           requiredTypes = ['pump', 'pump', 'ladder', 'rescue', 'command', 'ambulance'];
         } else if (isChecked('f_alarm') && !isChecked('f_flame') && !isChecked('f_smoke')) {
@@ -645,7 +672,7 @@
       } else {
         if (isChecked('r_trap') || isChecked('r_high')) {
           level = 'high';
-          scaleTitle = '救助出動（SR特別高度救助隊編成）';
+          scaleTitle = '救助出動（中央救助隊・PA連携編成）';
           guidance = '二次災害防止のため通報者は現場に近づかず、要救助者への声かけのみ行うよう指示してください。';
           requiredTypes = ['rescue', 'pump', 'ambulance', 'command'];
         } else {
@@ -747,7 +774,7 @@
     // 指令電文の自動組み立て
     function updateDispatchPreview() {
       const typeLabel = { fire: '火災指令', ems: '救急指令', rescue: '救助指令' }[currentDisasterType];
-      const address = document.getElementById('inputAddress').value.trim() || '横浜市内、通報地点付近';
+      const address = document.getElementById('inputAddress').value.trim() || 'つくば市内、通報地点付近';
       const landmark = document.getElementById('inputLandmark').value.trim();
       const subType = document.getElementById('inputSubType').value.trim() || '調査事案';
       const memo = document.getElementById('inputMemo').value.trim();
