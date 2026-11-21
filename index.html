@@ -1,0 +1,1732 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YOKOHAMA FIRE COMMAND SYSTEM // 統合消防通信指令コンソール</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Noto Sans JP & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Noto Sans JP"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            console: {
+              bg: '#070b14',
+              panel: '#0d1424',
+              card: '#131d33',
+              border: '#1f2e4d',
+              accent: '#38bdf8',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    body {
+      background-color: #070b14;
+      color: #e2e8f0;
+      font-family: 'Noto Sans JP', sans-serif;
+    }
+
+    /* 指令台らしいカスタムスクロールバー */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090e1a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #233559;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #38bdf8;
+    }
+
+    /* 119着信時の点滅アニメーション */
+    @keyframes ringPulse {
+      0%, 100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.85);
+        background-color: #dc2626;
+      }
+      50% {
+        box-shadow: 0 0 22px 6px rgba(239, 68, 68, 0.55);
+        background-color: #991b1b;
+      }
+    }
+    .animate-ringing {
+      animation: ringPulse 0.9s infinite;
+    }
+
+    /* ON AIR 放送中ランプ */
+    @keyframes onAirBlink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+    .animate-onair {
+      animation: onAirBlink 0.7s infinite;
+    }
+
+    /* 安全カバー風ストライプパターン */
+    .hazard-stripe {
+      background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(234, 179, 8, 0.14),
+        rgba(234, 179, 8, 0.14) 8px,
+        rgba(15, 23, 42, 0.5) 8px,
+        rgba(15, 23, 42, 0.5) 16px
+      );
+    }
+
+    /* グリッド背景テクスチャ */
+    .console-grid-bg {
+      background-image: 
+        linear-gradient(to right, rgba(30, 41, 59, 0.25) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(30, 41, 59, 0.25) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col console-grid-bg selection:bg-sky-500 selection:text-white">
+
+  <!-- =====================================================================
+       TOP HEADER BAR: システムタイトル・時計・119番擬似入電シミュレータ・音響テスト
+       ===================================================================== -->
+  <header class="sticky top-0 z-40 bg-[#090f1d]/95 backdrop-blur border-b border-slate-800 px-3 lg:px-5 py-2.5 shadow-lg">
+    <div class="max-w-[1800px] mx-auto flex flex-wrap items-center justify-between gap-3">
+      
+      <!-- システムロゴ・タイトル -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-red-600 to-rose-800 border border-red-400/40 flex items-center justify-center shadow-md shadow-red-950/50 shrink-0">
+          <!-- 消防章風インラインSVG -->
+          <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 2L14.8 8.5L22 9.2L16.5 14L18.2 21L12 17.3L5.8 21L7.5 14L2 9.2L9.2 8.5L12 2Z" />
+            <circle cx="12" cy="12" r="3" fill="currentColor" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-mono tracking-widest uppercase px-1.5 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-700/60">
+              YOKOHAMA NEXT-GEN MODEL
+            </span>
+            <span id="dbModeBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/50">
+              LOCAL PROTOTYPE MODE
+            </span>
+          </div>
+          <h1 class="text-sm sm:text-base lg:text-lg font-black tracking-wide text-slate-100 mt-0.5">
+            統合消防通信指令コンソール <span class="text-slate-400 font-medium text-xs hidden sm:inline">// 119受令・AIトリアージ・自動出動指令</span>
+          </h1>
+        </div>
+      </div>
+
+      <!-- 119番 擬似入電コントロール（シナリオ選択・入電・受話） -->
+      <div class="flex flex-wrap items-center gap-2 bg-slate-900/90 border border-slate-700/80 rounded-xl px-2.5 py-1.5">
+        <select id="scenarioSelect" aria-label="119番通報シナリオ選択"
+          class="bg-slate-950 text-slate-200 text-xs sm:text-sm border border-slate-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-400 max-w-[230px] sm:max-w-[310px]">
+          <option value="0">①【救急・CPA疑い】中区桜木町駅前・意識呼吸なし</option>
+          <option value="1">②【建物火災・第2出動】西区みなとみらい・3階黒煙・逃げ遅れ</option>
+          <option value="2">③【救助・交通事故】神奈川区東神奈川・衝突・車内閉じ込め</option>
+          <option value="3">④【救急・一般】南区弘明寺・階段転倒・右足首痛</option>
+          <option value="4">⑤【手動入力（新規事案）】自由入力モード</option>
+        </select>
+
+        <button id="btnSimulateCall" type="button"
+          class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 active:scale-95 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 transition shadow">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+          </svg>
+          <span>119番 擬似入電</span>
+        </button>
+
+        <button id="btnAnswerCall" type="button" disabled
+          class="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-500 font-bold text-xs sm:text-sm flex items-center gap-1.5 transition border border-slate-700 cursor-not-allowed">
+          <span class="w-2 h-2 rounded-full bg-current"></span>
+          <span id="btnAnswerLabel">受話 (待機)</span>
+        </button>
+      </div>
+
+      <!-- 時計・通話時間タイマー・音響テスト -->
+      <div class="flex items-center gap-2 sm:gap-3 ml-auto lg:ml-0">
+        <!-- 音響テストボタン群 -->
+        <div class="hidden xl:flex items-center gap-1.5">
+          <button id="btnTestChime" type="button"
+            class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition">
+            🔔 チャイム試聴
+          </button>
+          <button id="btnTestTTS" type="button"
+            class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition">
+            🔊 音声テスト
+          </button>
+        </div>
+
+        <!-- 119受令通話タイマー -->
+        <div class="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-right">
+          <div class="text-[10px] font-mono text-slate-400 leading-none">119 CALL TIME</div>
+          <div id="callTimerDisplay" class="font-mono text-base sm:text-lg font-extrabold text-slate-500 tracking-wider leading-tight">
+            00:00
+          </div>
+        </div>
+
+        <!-- 現在時刻 (JST) -->
+        <div class="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-right">
+          <div id="jstDateDisplay" class="text-[10px] font-mono text-sky-400 leading-none">----/--/--</div>
+          <div id="jstClockDisplay" class="font-mono text-base sm:text-lg font-extrabold text-slate-100 tracking-wider leading-tight">
+            00:00:00
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- =====================================================================
+       MAIN 3-PANE CONSOLE WORKSPACE
+       ===================================================================== -->
+  <main class="flex-1 max-w-[1800px] w-full mx-auto p-3 lg:p-4 grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-4">
+
+    <!-- ===================================================================
+         LEFT PANE (4 cols): 119番受令（発信地情報・種別・聴取チェック・AIキーワード抽出）
+         =================================================================== -->
+    <section class="lg:col-span-4 bg-console-panel border border-console-border rounded-2xl flex flex-col shadow-xl overflow-hidden">
+      <!-- ペインヘッダ -->
+      <div class="px-4 py-3 bg-gradient-to-r from-slate-900 to-[#111b30] border-b border-console-border flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-sky-400 shadow-[0_0_8px_#38bdf8]"></span>
+          <h2 class="font-bold text-sm sm:text-base tracking-wide text-white">1. 119番受令・状況聴取</h2>
+        </div>
+        <span id="callStatusBadge" class="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+          待機中 / STANDBY
+        </span>
+      </div>
+
+      <div class="p-4 space-y-4 flex-1 overflow-y-auto">
+        <!-- 発信地表示装置（ANI/ALI 再現） -->
+        <div class="bg-console-card border border-slate-700/80 rounded-xl p-3 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-sky-300 flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              発信地特定情報 (ANI / ALI)
+            </span>
+            <button id="btnToggleLineType" type="button"
+              class="text-[11px] font-bold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-600/60 hover:bg-indigo-900 transition">
+              携帯電話GPS
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">発信者番号</label>
+              <input id="inputPhone" type="text" value="090-XXXX-1190"
+                class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-100 focus:outline-none focus:border-sky-400" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">目標物・ランドマーク</label>
+              <input id="inputLandmark" type="text" placeholder="例：JR桜木町駅北口付近"
+                class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-sky-400" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">災害発生住所（横浜市域）</label>
+            <input id="inputAddress" type="text" placeholder="例：横浜市中区桜木町1丁目"
+              class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm font-bold text-amber-200 focus:outline-none focus:border-sky-400" />
+          </div>
+        </div>
+
+        <!-- 災害種別タブ切替 -->
+        <div>
+          <label class="block text-xs font-bold text-slate-300 mb-1.5">災害種別選択</label>
+          <div class="grid grid-cols-3 gap-2" role="tablist">
+            <button type="button" data-category="fire"
+              class="cat-tab py-2 px-2 rounded-xl font-bold text-xs sm:text-sm border transition flex items-center justify-center gap-1.5 bg-slate-900 border-slate-700 text-slate-400 hover:text-white">
+              <span>🔥</span><span>火災</span>
+            </button>
+            <button type="button" data-category="ems"
+              class="cat-tab py-2 px-2 rounded-xl font-bold text-xs sm:text-sm border transition flex items-center justify-center gap-1.5 bg-emerald-950/80 border-emerald-500 text-emerald-200 shadow-sm">
+              <span>🚑</span><span>救急</span>
+            </button>
+            <button type="button" data-category="rescue"
+              class="cat-tab py-2 px-2 rounded-xl font-bold text-xs sm:text-sm border transition flex items-center justify-center gap-1.5 bg-slate-900 border-slate-700 text-slate-400 hover:text-white">
+              <span>🦺</span><span>救助</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 種別連動・聴取チェックリスト -->
+        <div class="bg-console-card border border-slate-700/80 rounded-xl p-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-bold text-slate-200">重点聴取チェックリスト</span>
+            <span class="text-[10px] text-slate-400">※メモ入力で自動チェック連動</span>
+          </div>
+          <div id="checklistContainer" class="space-y-1.5">
+            <!-- JSで種別ごとに動的生成 -->
+          </div>
+        </div>
+
+        <!-- 通報聴取メモ ＆ 擬似AIキーワード抽出 -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label for="inputMemo" class="text-xs font-bold text-slate-200">通報聴取メモ（状況・主訴）</label>
+            <button id="btnClearMemo" type="button" class="text-[11px] text-slate-400 hover:text-sky-400 underline">
+              クリア
+            </button>
+          </div>
+          <textarea id="inputMemo" rows="4"
+            placeholder="通報者から聴取した内容を入力（例：駅前で男性が倒れていて意識がない。息もしていない様子…）"
+            class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs sm:text-sm text-slate-100 leading-relaxed focus:outline-none focus:border-sky-400"></textarea>
+
+          <!-- AIキーワード検知バッジ表示エリア -->
+          <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5">
+            <div class="flex items-center gap-1.5 text-[11px] font-bold text-sky-400 mb-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span>AI音声・テキスト危険ワード自動抽出</span>
+            </div>
+            <div id="detectedKeywordsContainer" class="flex flex-wrap gap-1.5 min-h-[24px] items-center">
+              <span class="text-[11px] text-slate-500">キーワード未検出</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         CENTER PANE (4 cols): AI緊急度判定・口頭指導サジェスト・自動部隊編成
+         =================================================================== -->
+    <section class="lg:col-span-4 bg-console-panel border border-console-border rounded-2xl flex flex-col shadow-xl overflow-hidden">
+      <!-- ペインヘッダ -->
+      <div class="px-4 py-3 bg-gradient-to-r from-slate-900 to-[#111b30] border-b border-console-border flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_#fbbf24]"></span>
+          <h2 class="font-bold text-sm sm:text-base tracking-wide text-white">2. AI緊急度判定・自動部隊編成</h2>
+        </div>
+        <span class="text-[11px] font-mono text-slate-400">TRIAGE ENGINE v2.4</span>
+      </div>
+
+      <div class="p-4 space-y-4 flex-1 overflow-y-auto">
+        <!-- 緊急度インジケーターカード -->
+        <div id="urgencyCard" class="rounded-2xl border-2 border-red-500/80 bg-gradient-to-br from-red-950/90 via-slate-900 to-slate-950 p-4 shadow-lg transition-all duration-300">
+          <div class="flex items-center justify-between gap-2 mb-1">
+            <span class="text-[11px] font-mono tracking-wider uppercase text-slate-300">AI TRIAGE LEVEL // 判定結果</span>
+            <span id="urgencyScoreBadge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-red-900/80 text-red-200 border border-red-500/40">
+              PRIORITY-1
+            </span>
+          </div>
+          <div id="urgencyTitle" class="text-xl sm:text-2xl font-black text-red-400 tracking-tight">
+            緊急度：高（最優先出動）
+          </div>
+          <div class="mt-2 pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="text-[10px] text-slate-400">推奨出動規模・編成種別</div>
+              <div id="recommendedTier" class="text-sm font-bold text-white">
+                救急PA連携（心肺停止疑い）
+              </div>
+            </div>
+            <div id="requiredSpecsBadges" class="flex flex-wrap gap-1">
+              <!-- 必要車両種別バッジ -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 口頭指導（応急手当・避難指示）サジェストボックス -->
+        <div id="guidanceBox" class="bg-amber-950/40 border border-amber-500/50 rounded-xl p-3 space-y-1.5">
+          <div class="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>口頭指導サジェスト（通報者への指示事項）</span>
+          </div>
+          <p id="guidanceText" class="text-xs sm:text-sm text-amber-100 leading-relaxed font-medium">
+            直ちに胸骨圧迫（心臓マッサージ）の開始を指導し、周囲にAEDがあれば手配するよう伝えてください。
+          </p>
+        </div>
+
+        <!-- 自動出動指定装置（部隊編成リスト） -->
+        <div class="bg-console-card border border-slate-700/80 rounded-xl p-3 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-xs sm:text-sm font-bold text-white">自動出動指定・編成隊選択</h3>
+              <p class="text-[11px] text-slate-400">「待機中」車両から自動抽出（手動追加・解除可）</p>
+            </div>
+            <button id="btnReassignUnits" type="button"
+              class="px-2.5 py-1 rounded-lg bg-sky-950 hover:bg-sky-900 text-sky-300 border border-sky-600/60 text-xs font-bold transition">
+              ↻ 自動再編成
+            </button>
+          </div>
+
+          <div id="unitWarningBanner" class="hidden text-[11px] bg-rose-950/80 border border-rose-500/50 text-rose-200 rounded-lg px-2.5 py-1.5">
+            ⚠️ 一部の車両が出動中のため、次点隊または編成不足となっています。
+          </div>
+
+          <!-- 編成選択チェックボックスリスト -->
+          <div id="unitSelectionGrid" class="grid grid-cols-2 gap-1.5 max-h-[270px] overflow-y-auto pr-1">
+            <!-- JSで全14隊を描画 -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         RIGHT PANE (4 cols): 指令発令・放送実行・車両動態(AVM)・指令履歴
+         =================================================================== -->
+    <section class="lg:col-span-4 bg-console-panel border border-console-border rounded-2xl flex flex-col shadow-xl overflow-hidden">
+      <!-- ペインヘッダ -->
+      <div class="px-4 py-3 bg-gradient-to-r from-slate-900 to-[#111b30] border-b border-console-border flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_#ef4444]"></span>
+          <h2 class="font-bold text-sm sm:text-base tracking-wide text-white">3. 指令発令・車両動態 (AVM)</h2>
+        </div>
+        <div id="onAirIndicator" class="hidden items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-600 text-white text-[11px] font-mono font-bold animate-onair">
+          <span class="w-2 h-2 rounded-full bg-white"></span>
+          <span>ON AIR // 指令放送中</span>
+        </div>
+      </div>
+
+      <div class="p-4 space-y-3.5 flex-1 overflow-y-auto">
+        <!-- 指令電文プレビュー（編集可能） -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label for="dispatchMessageBox" class="text-xs font-bold text-slate-200">自動生成・指令放送電文</label>
+            <button id="btnSyncMessage" type="button"
+              class="text-[11px] text-sky-400 hover:text-sky-300 underline">
+              聴取内容から再生成
+            </button>
+          </div>
+          <textarea id="dispatchMessageBox" rows="4"
+            class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs sm:text-sm font-medium text-emerald-300 leading-relaxed focus:outline-none focus:border-emerald-400"></textarea>
+        </div>
+
+        <!-- チャイム種別 & 読み上げ速度 -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-console-card border border-slate-700/80 rounded-xl p-2.5">
+          <div>
+            <label for="chimeSelect" class="block text-[11px] text-slate-400 mb-1">予告指令チャイム</label>
+            <select id="chimeSelect"
+              class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-sky-400">
+              <option value="ems">🚑 救急指令チャイム（2音階）</option>
+              <option value="fire">🔥 火災指令チャイム（緊急4音）</option>
+              <option value="rescue">🦺 救助・特別指令チャイム（上昇音）</option>
+            </select>
+          </div>
+          <div>
+            <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+              <label for="speechRateRange">合成音声速度</label>
+              <span id="speechRateLabel" class="font-mono text-sky-300">1.05x</span>
+            </div>
+            <input id="speechRateRange" type="range" min="0.8" max="1.4" step="0.05" value="1.05"
+              class="w-full accent-sky-400 cursor-pointer mt-1.5" />
+          </div>
+        </div>
+
+        <!-- 指令発令スイッチエリア（安全カバー解除トグル＋大型発令ボタン） -->
+        <div class="rounded-2xl border border-red-500/40 bg-slate-950/90 p-3 space-y-2.5 hazard-stripe">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+              <span>🛡️ 誤操作防止インターロック</span>
+            </span>
+            <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+              <input id="safetyArmToggle" type="checkbox" checked class="sr-only peer" />
+              <div class="w-10 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all relative peer-checked:bg-red-600"></div>
+              <span id="safetyArmLabel" class="text-xs font-mono font-bold text-red-400">ARMED (発令可)</span>
+            </label>
+          </div>
+
+          <button id="btnExecuteDispatch" type="button"
+            class="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 active:scale-[0.99] text-white font-black text-base sm:text-lg tracking-wider shadow-lg shadow-red-950/70 border border-red-400/50 flex items-center justify-center gap-2.5 transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+            </svg>
+            <span>指令発令（放送実行）</span>
+          </button>
+        </div>
+
+        <!-- 車両動態マトリクス (AVM 簡易ステータスボード) -->
+        <div class="bg-console-card border border-slate-700/80 rounded-xl p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-xs font-bold text-white">車両動態管理ボード (AVM)</h3>
+              <p class="text-[10px] text-slate-400">出動中隊をクリックで個別「帰署（待機戻し）」</p>
+            </div>
+            <button id="btnReturnAllUnits" type="button"
+              class="px-2 py-1 rounded bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-600/50 text-[11px] font-bold transition">
+              全隊帰署
+            </button>
+          </div>
+
+          <div id="avmBoardGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-1.5">
+            <!-- JSでAVMステータスバッジを描画 -->
+          </div>
+        </div>
+
+        <!-- 指令発令履歴ログ -->
+        <div class="bg-console-card border border-slate-700/80 rounded-xl p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-bold text-white">指令発令履歴（自動録音・電文ログ）</h3>
+            <span id="logCountBadge" class="text-[10px] font-mono text-slate-400">0 件</span>
+          </div>
+          <div id="dispatchLogList" class="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+            <div class="text-xs text-slate-500 text-center py-3">まだ指令履歴はありません</div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- トースト通知エリア（alert()の代替） -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- =====================================================================
+       APPLICATION LOGIC (JavaScript)
+       ロリポップ PHP/MySQL 連携を見据えたモジュール分割設計
+       ===================================================================== -->
+  <script>
+    /**
+     * =========================================================================
+     * 1. API / データストア層（将来的にロリポップの api.php へ差し替え可能）
+     * =========================================================================
+     */
+    const API_CONFIG = {
+      USE_REMOTE_API: false, // ロリポップ公開時に true へ変更
+      ENDPOINT_URL: './api.php'
+    };
+
+    // 横浜消防モデルの初期車両マスタ（14隊）
+    const INITIAL_VEHICLES = [
+      { id: 'v01', name: '中第1', station: '中消防署', type: 'ポンプ', status: '待機中' },
+      { id: 'v02', name: '中第2', station: '中消防署', type: 'ポンプ', status: '待機中' },
+      { id: 'v03', name: '西第1', station: '西消防署', type: 'ポンプ', status: '待機中' },
+      { id: 'v04', name: '神奈川第1', station: '神奈川消防署', type: 'ポンプ', status: '待機中' },
+      { id: 'v05', name: '南第1', station: '南消防署', type: 'ポンプ', status: '待機中' },
+      { id: 'v06', name: '鶴見第1', station: '鶴見消防署', type: 'ポンプ', status: '待機中' },
+      { id: 'v07', name: '中救助(SR)', station: '中消防署', type: '救助', status: '待機中' },
+      { id: 'v08', name: '神奈川救助', station: '神奈川消防署', type: '救助', status: '待機中' },
+      { id: 'v09', name: '西はしご', station: '西消防署', type: 'はしご', status: '待機中' },
+      { id: 'v10', name: '中指揮', station: '中消防署', type: '指揮', status: '待機中' },
+      { id: 'v11', name: '中救急', station: '中消防署', type: '救急', status: '待機中' },
+      { id: 'v12', name: '西救急', station: '西消防署', type: '救急', status: '待機中' },
+      { id: 'v13', name: '神奈川救急', station: '神奈川消防署', type: '救急', status: '待機中' },
+      { id: 'v14', name: '南救急', station: '南消防署', type: '救急', status: '待機中' }
+    ];
+
+    /**
+     * データ通信サービス（ローカルモック / リモートPHP API 抽象化）
+     */
+    const DataService = {
+      async fetchVehicles() {
+        if (API_CONFIG.USE_REMOTE_API) {
+          const res = await fetch(`${API_CONFIG.ENDPOINT_URL}?action=get_vehicles`);
+          return await res.json();
+        }
+        return JSON.parse(JSON.stringify(state.vehicles));
+      },
+
+      async dispatchVehicles(unitIds, incidentPayload) {
+        if (API_CONFIG.USE_REMOTE_API) {
+          await fetch(`${API_CONFIG.ENDPOINT_URL}?action=dispatch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ unitIds, incident: incidentPayload })
+          });
+        }
+        // ローカル状態更新
+        state.vehicles.forEach(v => {
+          if (unitIds.includes(v.id)) {
+            v.status = '出動中';
+          }
+        });
+      },
+
+      async returnVehicle(unitId) {
+        if (API_CONFIG.USE_REMOTE_API) {
+          await fetch(`${API_CONFIG.ENDPOINT_URL}?action=return_unit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ unitId })
+          });
+        }
+        const target = state.vehicles.find(v => v.id === unitId);
+        if (target) target.status = '待機中';
+      },
+
+      async returnAllVehicles() {
+        if (API_CONFIG.USE_REMOTE_API) {
+          await fetch(`${API_CONFIG.ENDPOINT_URL}?action=return_all`, { method: 'POST' });
+        }
+        state.vehicles.forEach(v => { v.status = '待機中'; });
+      }
+    };
+
+    /**
+     * =========================================================================
+     * 2. 119番シナリオ・聴取項目・AIキーワード辞書定義
+     * =========================================================================
+     */
+    const SCENARIOS = [
+      {
+        id: 0,
+        title: '【救急・CPA疑い】中区桜木町駅前・意識呼吸なし',
+        lineType: '携帯電話GPS',
+        phone: '090-8412-9910',
+        address: '横浜市中区桜木町1丁目',
+        landmark: 'JR桜木町駅北口広場付近',
+        category: 'ems',
+        memo: '駅前のベンチ付近で60代くらいの男性が突然倒れた。呼びかけても意識なし。胸の動きもなく呼吸なし、息をしていない状態です。'
+      },
+      {
+        id: 1,
+        title: '【建物火災・第2出動】西区みなとみらい・3階黒煙・逃げ遅れ',
+        lineType: '携帯電話GPS',
+        phone: '080-3310-7741',
+        address: '横浜市西区みなとみらい3丁目',
+        landmark: 'みなとみらい大通り沿い商業ビル',
+        category: 'fire',
+        memo: '5階建てビルの3階窓から激しい炎と黒煙が噴き出している。警報ベルが鳴っており、3階に逃げ遅れが2名いる模様。初期消火は不可能です。'
+      },
+      {
+        id: 2,
+        title: '【救助・交通事故】神奈川区東神奈川・衝突・車内閉じ込め',
+        lineType: '携帯電話GPS',
+        phone: '070-5591-1204',
+        address: '横浜市神奈川区東神奈川1丁目',
+        landmark: '国道15号線・東神奈川駅入口交差点',
+        category: 'rescue',
+        memo: '乗用車と大型トラックの出会い頭の衝突事故。乗用車が大破してドアが開かず、運転手1名が車内に閉じ込められている。足が挟まれている様子。'
+      },
+      {
+        id: 3,
+        title: '【救急・一般】南区弘明寺・階段転倒・右足首痛',
+        lineType: '固定電話',
+        phone: '045-712-XXXX',
+        address: '横浜市南区弘明寺町',
+        landmark: '弘明寺商店街南側住宅',
+        category: 'ems',
+        memo: '自宅の階段を踏み外して転倒し、右足首を強くひねって歩けない。意識ははっきりしており会話も可能。出血はありません。'
+      },
+      {
+        id: 4,
+        title: '【手動入力（新規事案）】自由入力モード',
+        lineType: '固定電話',
+        phone: '045-201-XXXX',
+        address: '横浜市中区日本大通',
+        landmark: '',
+        category: 'ems',
+        memo: ''
+      }
+    ];
+
+    // 種別ごとの聴取チェックリスト＆自動抽出キーワードマッピング
+    const CHECKLIST_DEFINITIONS = {
+      fire: [
+        { id: 'fire_smoke', label: '炎・黒煙の視認', weight: 3, keywords: ['炎', '黒煙', '煙', '燃えている', '火柱'] },
+        { id: 'fire_building', label: '中高層・密集建物', weight: 2, keywords: ['ビル', 'マンション', '階', 'アパート', '密集', '建物'] },
+        { id: 'fire_trapped', label: '逃げ遅れ・要救助者あり', weight: 5, keywords: ['逃げ遅れ', '取り残され', '人がいる', '出られない'] },
+        { id: 'fire_hazmat', label: '危険物・爆発のおそれ', weight: 4, keywords: ['爆発', 'ガス', 'ボンベ', 'ガソリン', '危険物'] },
+        { id: 'fire_uncontrollable', label: '初期消火不能・延焼拡大中', weight: 2, keywords: ['消火不能', '不可能', '広がって', '延焼'] }
+      ],
+      ems: [
+        { id: 'ems_unconscious', label: '意識なし（反応なし）', weight: 5, keywords: ['意識なし', '意識がない', '反応がない', 'ぐったり', '呼びかけても'] },
+        { id: 'ems_no_breath', label: '呼吸なし・死戦期呼吸', weight: 6, keywords: ['呼吸なし', '呼吸がない', '息をしていない', '息がない', 'あえぎ'] },
+        { id: 'ems_chest_stroke', label: '激しい胸痛・麻痺・呂律障害', weight: 4, keywords: ['胸痛', '胸が痛い', '麻痺', 'ろれつ', 'しびれ', '冷や汗'] },
+        { id: 'ems_bleeding', label: '大量出血・吐血', weight: 4, keywords: ['大量出血', '血が止まらない', '吐血', '大出血'] },
+        { id: 'ems_trauma', label: '高エネルギー外傷・交通事故', weight: 3, keywords: ['事故', 'はねられ', '転落', '衝突'] }
+      ],
+      rescue: [
+        { id: 'res_trapped', label: '要救助者あり（閉じ込め・挟まれ）', weight: 5, keywords: ['閉じ込め', '挟まれ', '出られない', '下敷き', '大破'] },
+        { id: 'res_water_height', label: '高所・水難・転落事故', weight: 4, keywords: ['転落', '水難', '海', '川', '落ちた', '高所'] },
+        { id: 'res_gas_chem', label: 'ガス漏れ・有毒物質漏洩', weight: 4, keywords: ['ガス漏れ', '異臭', '薬品', '有毒', '刺激臭'] },
+        { id: 'res_multiple', label: '複数名の負傷者発生', weight: 3, keywords: ['複数', '何人も', '全員', '数名'] }
+      ]
+    };
+
+    /**
+     * =========================================================================
+     * 3. アプリケーション状態管理 (State)
+     * =========================================================================
+     */
+    const state = {
+      vehicles: JSON.parse(JSON.stringify(INITIAL_VEHICLES)),
+      category: 'ems',
+      checkedItems: new Set(),
+      selectedUnitIds: new Set(),
+      detectedKeywords: [],
+      triageResult: {
+        level: 'high',
+        title: '緊急度：高（最優先出動）',
+        tierName: '救急PA連携（心肺停止疑い）',
+        requiredTypes: { '救急': 1, 'ポンプ': 1 },
+        guidance: ''
+      },
+      isRinging: false,
+      isCallActive: false,
+      callSeconds: 0,
+      callTimerInterval: null,
+      ringInterval: null,
+      isBroadcasting: false,
+      messageManuallyEdited: false,
+      dispatchLogs: []
+    };
+
+    /**
+     * =========================================================================
+     * 4. Web Audio API 音響エンジン（119着信音・指令チャイム・PTT音・スケルチ音）
+     * =========================================================================
+     */
+    const AudioEngine = {
+      ctx: null,
+
+      ensureContext() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioCtx();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+        return this.ctx;
+      },
+
+      // 単音ベル/チャイム生成ヘルパー
+      playTone(freq, startTime, duration, volume = 0.25, type = 'sine') {
+        const ctx = this.ensureContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, startTime);
+
+        gain.gain.setValueAtTime(0.0001, startTime);
+        gain.gain.exponentialRampToValueAtTime(volume, startTime + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(startTime);
+        osc.stop(startTime + duration + 0.02);
+      },
+
+      // 119番着信音（1回分の鳴動：日本の局線着信音風 400Hz + 16Hz変調）
+      playSingleRingBurst() {
+        const ctx = this.ensureContext();
+        const now = ctx.currentTime;
+        const duration = 0.95;
+
+        const carrier = ctx.createOscillator();
+        const mod = ctx.createOscillator();
+        const modGain = ctx.createGain();
+        const masterGain = ctx.createGain();
+
+        carrier.type = 'sine';
+        carrier.frequency.setValueAtTime(415, now);
+
+        mod.type = 'sine';
+        mod.frequency.setValueAtTime(17, now);
+        modGain.gain.setValueAtTime(35, now);
+
+        masterGain.gain.setValueAtTime(0.001, now);
+        masterGain.gain.linearRampToValueAtTime(0.18, now + 0.03);
+        masterGain.gain.setValueAtTime(0.18, now + duration - 0.05);
+        masterGain.gain.linearRampToValueAtTime(0.0001, now + duration);
+
+        mod.connect(modGain);
+        modGain.connect(carrier.frequency);
+        carrier.connect(masterGain);
+        masterGain.connect(ctx.destination);
+
+        carrier.start(now);
+        mod.start(now);
+        carrier.stop(now + duration);
+        mod.stop(now + duration);
+      },
+
+      // 予告指令チャイム再生（種別ごとに異なるリアルな電子チャイム）
+      playDispatchChime(chimeType = 'ems') {
+        return new Promise((resolve) => {
+          const ctx = this.ensureContext();
+          const now = ctx.currentTime + 0.05;
+
+          if (chimeType === 'fire') {
+            // 火災指令チャイム：緊迫感のある4音×2回 (E5 - C5 - E5 - C5)
+            const notes = [
+              { f: 659.25, t: 0.00, d: 0.22 },
+              { f: 523.25, t: 0.22, d: 0.22 },
+              { f: 659.25, t: 0.44, d: 0.22 },
+              { f: 523.25, t: 0.66, d: 0.35 },
+              { f: 659.25, t: 1.05, d: 0.22 },
+              { f: 523.25, t: 1.27, d: 0.22 },
+              { f: 659.25, t: 1.49, d: 0.22 },
+              { f: 523.25, t: 1.71, d: 0.45 }
+            ];
+            notes.forEach(n => {
+              this.playTone(n.f, now + n.t, n.d, 0.24, 'triangle');
+              this.playTone(n.f * 2, now + n.t, n.d * 0.7, 0.06, 'sine');
+            });
+            setTimeout(resolve, 2250);
+          } else if (chimeType === 'rescue') {
+            // 救助・特別指令チャイム：上昇3和音アルペジオ×2回 (C5 - E5 - G5 - C6)
+            const notes = [
+              { f: 523.25, t: 0.00, d: 0.20 },
+              { f: 659.25, t: 0.18, d: 0.20 },
+              { f: 783.99, t: 0.36, d: 0.20 },
+              { f: 1046.50, t: 0.54, d: 0.45 },
+              { f: 523.25, t: 1.05, d: 0.20 },
+              { f: 659.25, t: 1.23, d: 0.20 },
+              { f: 783.99, t: 1.41, d: 0.20 },
+              { f: 1046.50, t: 1.59, d: 0.50 }
+            ];
+            notes.forEach(n => {
+              this.playTone(n.f, now + n.t, n.d, 0.22, 'triangle');
+            });
+            setTimeout(resolve, 2150);
+          } else {
+            // 救急指令チャイム：標準2音チャイム×2回 (A4 -> F#4)
+            const notes = [
+              { f: 587.33, t: 0.00, d: 0.38 }, // D5
+              { f: 440.00, t: 0.38, d: 0.55 }, // A4
+              { f: 587.33, t: 1.00, d: 0.38 }, // D5
+              { f: 440.00, t: 1.38, d: 0.65 }  // A4
+            ];
+            notes.forEach(n => {
+              this.playTone(n.f, now + n.t, n.d, 0.25, 'sine');
+              this.playTone(n.f * 2, now + n.t, n.d * 0.6, 0.05, 'sine');
+            });
+            setTimeout(resolve, 2100);
+          }
+        });
+      },
+
+      // 無線PTT開始トーン（「ピッ」）
+      playPttStartTone() {
+        const ctx = this.ensureContext();
+        this.playTone(1250, ctx.currentTime + 0.01, 0.065, 0.18, 'sine');
+      },
+
+      // 無線スケルチテール音（「ザッ」）
+      playSquelchTail() {
+        const ctx = this.ensureContext();
+        const now = ctx.currentTime + 0.02;
+        const duration = 0.16;
+        const bufferSize = Math.floor(ctx.sampleRate * duration);
+        const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+
+        for (let i = 0; i < bufferSize; i++) {
+          output[i] = Math.random() * 2 - 1;
+        }
+
+        const whiteNoise = ctx.createBufferSource();
+        whiteNoise.buffer = noiseBuffer;
+
+        // 無線帯域（400Hz〜2600Hz）のバンドパスフィルタ
+        const bandpass = ctx.createBiquadFilter();
+        bandpass.type = 'bandpass';
+        bandpass.frequency.setValueAtTime(1400, now);
+        bandpass.Q.setValueAtTime(1.2, now);
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.16, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        whiteNoise.connect(bandpass);
+        bandpass.connect(gain);
+        gain.connect(ctx.destination);
+
+        whiteNoise.start(now);
+        whiteNoise.stop(now + duration);
+      }
+    };
+
+    /**
+     * =========================================================================
+     * 5. 音声合成エンジン (Web Speech API)
+     * =========================================================================
+     */
+    const SpeechEngine = {
+      selectedVoice: null,
+
+      init() {
+        const loadVoices = () => {
+          const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+          // 日本語音声を優先選択
+          this.selectedVoice =
+            voices.find(v => v.lang === 'ja-JP' && (v.name.includes('Google') || v.name.includes('Kyoko') || v.name.includes('Otoya') || v.name.includes('Nanami'))) ||
+            voices.find(v => v.lang.includes('ja')) ||
+            null;
+        };
+        loadVoices();
+        if (window.speechSynthesis && window.speechSynthesis.onvoiceschanged !== undefined) {
+          window.speechSynthesis.onvoiceschanged = loadVoices;
+        }
+      },
+
+      // 消防無線風の自然な読み仮名へ補正
+      normalizeForJapaneseSpeech(text) {
+        return text
+          .replace(/中第(\d+)/g, 'なかだい$1')
+          .replace(/中救助\(SR\)/g, 'なかきゅうじょ、エスアール')
+          .replace(/中指揮/g, 'なかしき')
+          .replace(/中救急/g, 'なかきゅうきゅう')
+          .replace(/PA連携/g, 'ピーエーれんけい')
+          .replace(/CPA/g, 'シーピーエー')
+          .replace(/1丁目/g, 'いっちょうめ')
+          .replace(/2丁目/g, 'にちょうめ')
+          .replace(/3丁目/g, 'さんちょうめ')
+          .replace(/4丁目/g, 'よんちょうめ')
+          .replace(/5丁目/g, 'ごちょうめ');
+      },
+
+      speak(text, rate = 1.05) {
+        return new Promise((resolve) => {
+          if (!('speechSynthesis' in window)) {
+            showToast('このブラウザは音声合成に対応していません', 'warning');
+            setTimeout(resolve, 1200);
+            return;
+          }
+
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(this.normalizeForJapaneseSpeech(text));
+          utterance.lang = 'ja-JP';
+          if (this.selectedVoice) {
+            utterance.voice = this.selectedVoice;
+          }
+          utterance.rate = rate;
+          utterance.pitch = 1.02;
+          utterance.volume = 1.0;
+
+          let finished = false;
+          const finishOnce = () => {
+            if (!finished) {
+              finished = true;
+              resolve();
+            }
+          };
+
+          utterance.onend = finishOnce;
+          utterance.onerror = finishOnce;
+
+          // 万一ブラウザのonendが発火しない場合の安全タイムアウト
+          const fallbackMs = Math.max(4000, text.length * 160);
+          setTimeout(finishOnce, fallbackMs);
+
+          window.speechSynthesis.speak(utterance);
+        });
+      }
+    };
+
+    /**
+     * =========================================================================
+     * 6. UIレンダリング & 判定ロジック
+     * =========================================================================
+     */
+    const DOM = {};
+
+    function cacheDOM() {
+      DOM.scenarioSelect = document.getElementById('scenarioSelect');
+      DOM.btnSimulateCall = document.getElementById('btnSimulateCall');
+      DOM.btnAnswerCall = document.getElementById('btnAnswerCall');
+      DOM.btnAnswerLabel = document.getElementById('btnAnswerLabel');
+      DOM.btnTestChime = document.getElementById('btnTestChime');
+      DOM.btnTestTTS = document.getElementById('btnTestTTS');
+      DOM.callTimerDisplay = document.getElementById('callTimerDisplay');
+      DOM.jstDateDisplay = document.getElementById('jstDateDisplay');
+      DOM.jstClockDisplay = document.getElementById('jstClockDisplay');
+      DOM.callStatusBadge = document.getElementById('callStatusBadge');
+
+      DOM.btnToggleLineType = document.getElementById('btnToggleLineType');
+      DOM.inputPhone = document.getElementById('inputPhone');
+      DOM.inputLandmark = document.getElementById('inputLandmark');
+      DOM.inputAddress = document.getElementById('inputAddress');
+      DOM.catTabs = document.querySelectorAll('.cat-tab');
+      DOM.checklistContainer = document.getElementById('checklistContainer');
+      DOM.inputMemo = document.getElementById('inputMemo');
+      DOM.btnClearMemo = document.getElementById('btnClearMemo');
+      DOM.detectedKeywordsContainer = document.getElementById('detectedKeywordsContainer');
+
+      DOM.urgencyCard = document.getElementById('urgencyCard');
+      DOM.urgencyScoreBadge = document.getElementById('urgencyScoreBadge');
+      DOM.urgencyTitle = document.getElementById('urgencyTitle');
+      DOM.recommendedTier = document.getElementById('recommendedTier');
+      DOM.requiredSpecsBadges = document.getElementById('requiredSpecsBadges');
+      DOM.guidanceBox = document.getElementById('guidanceBox');
+      DOM.guidanceText = document.getElementById('guidanceText');
+      DOM.btnReassignUnits = document.getElementById('btnReassignUnits');
+      DOM.unitWarningBanner = document.getElementById('unitWarningBanner');
+      DOM.unitSelectionGrid = document.getElementById('unitSelectionGrid');
+
+      DOM.onAirIndicator = document.getElementById('onAirIndicator');
+      DOM.dispatchMessageBox = document.getElementById('dispatchMessageBox');
+      DOM.btnSyncMessage = document.getElementById('btnSyncMessage');
+      DOM.chimeSelect = document.getElementById('chimeSelect');
+      DOM.speechRateRange = document.getElementById('speechRateRange');
+      DOM.speechRateLabel = document.getElementById('speechRateLabel');
+      DOM.safetyArmToggle = document.getElementById('safetyArmToggle');
+      DOM.safetyArmLabel = document.getElementById('safetyArmLabel');
+      DOM.btnExecuteDispatch = document.getElementById('btnExecuteDispatch');
+      DOM.btnReturnAllUnits = document.getElementById('btnReturnAllUnits');
+      DOM.avmBoardGrid = document.getElementById('avmBoardGrid');
+      DOM.logCountBadge = document.getElementById('logCountBadge');
+      DOM.dispatchLogList = document.getElementById('dispatchLogList');
+      DOM.toastContainer = document.getElementById('toastContainer');
+    }
+
+    // トーストメッセージ表示
+    function showToast(message, type = 'info') {
+      const colors = {
+        info: 'bg-slate-900 border-sky-500/70 text-sky-200',
+        success: 'bg-emerald-950 border-emerald-500/70 text-emerald-200',
+        warning: 'bg-amber-950 border-amber-500/70 text-amber-200',
+        danger: 'bg-red-950 border-red-500/70 text-red-200'
+      };
+      const el = document.createElement('div');
+      el.className = `pointer-events-auto px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-bold shadow-xl backdrop-blur transition-all duration-300 ${colors[type] || colors.info}`;
+      el.textContent = message;
+      DOM.toastContainer.appendChild(el);
+      setTimeout(() => {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(8px)';
+        setTimeout(() => el.remove(), 300);
+      }, 3200);
+    }
+
+    // JSTリアルタイム時計更新
+    function updateClock() {
+      const now = new Date();
+      const jst = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+      const yyyy = jst.getFullYear();
+      const mm = String(jst.getMonth() + 1).padStart(2, '0');
+      const dd = String(jst.getDate()).padStart(2, '0');
+      const hh = String(jst.getHours()).padStart(2, '0');
+      const mi = String(jst.getMinutes()).padStart(2, '0');
+      const ss = String(jst.getSeconds()).padStart(2, '0');
+
+      DOM.jstDateDisplay.textContent = `${yyyy}/${mm}/${dd} (JST)`;
+      DOM.jstClockDisplay.textContent = `${hh}:${mi}:${ss}`;
+    }
+
+    // 災害種別タブの切り替えとチェックリスト描画
+    function setCategory(cat, preserveChecks = false) {
+      state.category = cat;
+      if (!preserveChecks) {
+        state.checkedItems.clear();
+      }
+
+      // タブのアクティブ見た目更新
+      const activeStyles = {
+        fire: 'bg-red-950/90 border-red-500 text-red-200 shadow-sm',
+        ems: 'bg-emerald-950/90 border-emerald-500 text-emerald-200 shadow-sm',
+        rescue: 'bg-amber-950/90 border-amber-500 text-amber-200 shadow-sm'
+      };
+      DOM.catTabs.forEach(btn => {
+        const c = btn.dataset.category;
+        if (c === cat) {
+          btn.className = `cat-tab py-2 px-2 rounded-xl font-bold text-xs sm:text-sm border transition flex items-center justify-center gap-1.5 ${activeStyles[c]}`;
+        } else {
+          btn.className = 'cat-tab py-2 px-2 rounded-xl font-bold text-xs sm:text-sm border transition flex items-center justify-center gap-1.5 bg-slate-900 border-slate-700 text-slate-400 hover:text-white';
+        }
+      });
+
+      // チャイム種別も自動連動
+      DOM.chimeSelect.value = cat;
+
+      renderChecklist();
+      analyzeMemoAndTriage(true);
+    }
+
+    // 聴取チェックリスト描画
+    function renderChecklist() {
+      const items = CHECKLIST_DEFINITIONS[state.category] || [];
+      DOM.checklistContainer.innerHTML = '';
+
+      items.forEach(item => {
+        const isChecked = state.checkedItems.has(item.id);
+        const label = document.createElement('label');
+        label.className = `flex items-center justify-between p-2 rounded-lg border cursor-pointer transition select-none ${
+          isChecked
+            ? 'bg-sky-950/60 border-sky-500/70 text-white'
+            : 'bg-slate-950/70 border-slate-800 text-slate-300 hover:border-slate-600'
+        }`;
+
+        label.innerHTML = `
+          <div class="flex items-center gap-2">
+            <input type="checkbox" data-check-id="${item.id}" ${isChecked ? 'checked' : ''}
+              class="w-4 h-4 rounded accent-sky-400 cursor-pointer" />
+            <span class="text-xs font-medium">${item.label}</span>
+          </div>
+          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded ${
+            item.weight >= 5 ? 'bg-red-950 text-red-300 border border-red-700/50' : 'bg-slate-800 text-slate-400'
+          }">+${item.weight}pt</span>
+        `;
+
+        const checkbox = label.querySelector('input');
+        checkbox.addEventListener('change', (e) => {
+          if (e.target.checked) {
+            state.checkedItems.add(item.id);
+          } else {
+            state.checkedItems.delete(item.id);
+          }
+          renderChecklist();
+          recalculateTriage(true);
+        });
+
+        DOM.checklistContainer.appendChild(label);
+      });
+    }
+
+    // 通報メモからキーワードを自動抽出してチェックボックスをONにする
+    function analyzeMemoAndTriage(autoAssignUnits = true) {
+      const memoText = DOM.inputMemo.value || '';
+      const defs = CHECKLIST_DEFINITIONS[state.category] || [];
+      const foundKeywords = [];
+
+      defs.forEach(item => {
+        item.keywords.forEach(kw => {
+          if (memoText.includes(kw)) {
+            if (!foundKeywords.includes(kw)) {
+              foundKeywords.push(kw);
+            }
+            state.checkedItems.add(item.id);
+          }
+        });
+      });
+
+      state.detectedKeywords = foundKeywords;
+
+      // キーワードバッジ描画
+      if (foundKeywords.length === 0) {
+        DOM.detectedKeywordsContainer.innerHTML = '<span class="text-[11px] text-slate-500">キーワード未検出</span>';
+      } else {
+        DOM.detectedKeywordsContainer.innerHTML = foundKeywords
+          .map(kw => `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-950 text-rose-200 border border-rose-500/60 shadow-sm">⚡ ${kw}</span>`)
+          .join('');
+      }
+
+      renderChecklist();
+      recalculateTriage(autoAssignUnits);
+    }
+
+    // 緊急度スコアリング・推奨編成・口頭指導算出
+    function recalculateTriage(autoAssignUnits = true) {
+      const defs = CHECKLIST_DEFINITIONS[state.category] || [];
+      let score = 0;
+      defs.forEach(item => {
+        if (state.checkedItems.has(item.id)) {
+          score += item.weight;
+        }
+      });
+
+      let level = 'low';
+      let title = '緊急度：低（通常出動）';
+      let scoreBadge = 'PRIORITY-3';
+      let tierName = '';
+      let requiredTypes = {};
+      let guidance = '';
+
+      if (state.category === 'ems') {
+        const hasUnconscious = state.checkedItems.has('ems_unconscious');
+        const hasNoBreath = state.checkedItems.has('ems_no_breath');
+
+        if (hasUnconscious && hasNoBreath || score >= 8) {
+          level = 'high';
+          title = '緊急度：高（最優先出動）';
+          scoreBadge = 'PRIORITY-1 // CPA疑い';
+          tierName = '救急PA連携（高規格救急＋ポンプ隊）';
+          requiredTypes = { '救急': 1, 'ポンプ': 1 };
+          guidance = '【最優先口頭指導】直ちに胸骨圧迫（心臓マッサージ）を開始させてください。周囲に人がいればAEDの手配を指示してください。';
+        } else if (score >= 4) {
+          level = 'medium';
+          title = '緊急度：中（迅速出動）';
+          scoreBadge = 'PRIORITY-2';
+          tierName = '高規格救急隊 迅速出動';
+          requiredTypes = { '救急': 1 };
+          guidance = '楽な姿勢（胸痛時は半座位、意識障害時は回復体位）をとらせ、衣服を緩めて安静を保つよう指示してください。';
+        } else {
+          level = 'low';
+          title = '緊急度：低（通常出動）';
+          scoreBadge = 'PRIORITY-3';
+          tierName = '救急単独出動';
+          requiredTypes = { '救急': 1 };
+          guidance = '患部を動かさず安静にして救急隊の到着を待つよう伝えてください。保険証・お薬手帳の準備を案内してください。';
+        }
+      } else if (state.category === 'fire') {
+        const hasTrapped = state.checkedItems.has('fire_trapped');
+        if (hasTrapped || score >= 7) {
+          level = 'high';
+          title = '緊急度：高（大規模延焼・人命危険）';
+          scoreBadge = '2ND ALARM // 第2出動相当';
+          tierName = '建物火災 第2出動編成';
+          requiredTypes = { 'ポンプ': 4, 'はしご': 1, '救助': 1, '指揮': 1, '救急': 1 };
+          guidance = '【避難最優先】初期消火は絶対に行わず、姿勢を低くして直ちに建物外へ避難するよう強く指示してください。';
+        } else if (score >= 3) {
+          level = 'medium';
+          title = '緊急度：中（建物火災標準）';
+          scoreBadge = '1ST ALARM // 第1出動';
+          tierName = '建物火災 第1出動編成';
+          requiredTypes = { 'ポンプ': 3, 'はしご': 1, '指揮': 1 };
+          guidance = '安全を確保した上で避難し、可能な場合はブレーカー遮断とドアを閉めて延焼を遅らせるよう指示してください。';
+        } else {
+          level = 'low';
+          title = '緊急度：低（小規模・その他火災）';
+          scoreBadge = 'LOCAL FIRE // 局地出動';
+          tierName = 'その他火災 出動編成';
+          requiredTypes = { 'ポンプ': 2, '指揮': 1 };
+          guidance = '風下を避けて安全な場所へ退避し、消防隊の誘導をお願いしてください。';
+        }
+      } else if (state.category === 'rescue') {
+        const hasTrapped = state.checkedItems.has('res_trapped');
+        if (hasTrapped || score >= 5) {
+          level = 'high';
+          title = '緊急度：高（救助特別出動）';
+          scoreBadge = 'RESCUE-1 // 特別高度救助';
+          tierName = '救助特別出動（SR・ポンプ・救急連携）';
+          requiredTypes = { '救助': 2, 'ポンプ': 2, '指揮': 1, '救急': 1 };
+          guidance = '二次災害（後続車追突・車両火災・崩落）を防ぐため、通報者自身は安全な歩道等へ退避し、要救助者への声かけを継続させてください。';
+        } else {
+          level = 'medium';
+          title = '緊急度：中（救助一般出動）';
+          scoreBadge = 'RESCUE-2 // 一般救助';
+          tierName = '救助一般出動編成';
+          requiredTypes = { '救助': 1, 'ポンプ': 1, '救急': 1 };
+          guidance = '現場の安全を確保し、無理に自力で引き出そうとせず救助隊の到着を待つよう伝えてください。';
+        }
+      }
+
+      state.triageResult = { level, title, scoreBadge, tierName, requiredTypes, guidance };
+      renderTriageUI();
+
+      if (autoAssignUnits) {
+        autoSelectUnits(requiredTypes);
+      } else {
+        updateDispatchMessageIfNotManual();
+      }
+    }
+
+    // 緊急度カードの見た目更新
+    function renderTriageUI() {
+      const { level, title, scoreBadge, tierName, requiredTypes, guidance } = state.triageResult;
+
+      const styles = {
+        high: {
+          card: 'border-red-500/80 bg-gradient-to-br from-red-950/90 via-slate-900 to-slate-950',
+          badge: 'bg-red-900/80 text-red-200 border-red-500/50',
+          title: 'text-red-400'
+        },
+        medium: {
+          card: 'border-amber-500/80 bg-gradient-to-br from-amber-950/80 via-slate-900 to-slate-950',
+          badge: 'bg-amber-900/80 text-amber-200 border-amber-500/50',
+          title: 'text-amber-300'
+        },
+        low: {
+          card: 'border-emerald-500/70 bg-gradient-to-br from-emerald-950/70 via-slate-900 to-slate-950',
+          badge: 'bg-emerald-900/80 text-emerald-200 border-emerald-500/50',
+          title: 'text-emerald-400'
+        }
+      };
+
+      const st = styles[level];
+      DOM.urgencyCard.className = `rounded-2xl border-2 p-4 shadow-lg transition-all duration-300 ${st.card}`;
+      DOM.urgencyScoreBadge.className = `text-[11px] font-mono px-2 py-0.5 rounded border ${st.badge}`;
+      DOM.urgencyScoreBadge.textContent = scoreBadge;
+      DOM.urgencyTitle.className = `text-xl sm:text-2xl font-black tracking-tight ${st.title}`;
+      DOM.urgencyTitle.textContent = title;
+      DOM.recommendedTier.textContent = tierName;
+      DOM.guidanceText.textContent = guidance;
+
+      // 必要車両種別バッジ
+      DOM.requiredSpecsBadges.innerHTML = Object.entries(requiredTypes)
+        .map(([type, count]) => `<span class="text-[11px] font-bold px-2 py-0.5 rounded bg-slate-800 text-sky-300 border border-slate-600">${type}×${count}</span>`)
+        .join('');
+    }
+
+    // 待機中車両から必要隊を自動選定
+    function autoSelectUnits(requiredTypes) {
+      state.selectedUnitIds.clear();
+      let shortage = false;
+
+      Object.entries(requiredTypes).forEach(([type, neededCount]) => {
+        const available = state.vehicles.filter(v => v.type === type && v.status === '待機中');
+        if (available.length < neededCount) {
+          shortage = true;
+        }
+        available.slice(0, neededCount).forEach(v => state.selectedUnitIds.add(v.id));
+      });
+
+      if (shortage) {
+        DOM.unitWarningBanner.classList.remove('hidden');
+      } else {
+        DOM.unitWarningBanner.classList.add('hidden');
+      }
+
+      renderUnitSelectionGrid();
+      updateDispatchMessageIfNotManual();
+    }
+
+    // 部隊編成選択グリッド描画
+    function renderUnitSelectionGrid() {
+      DOM.unitSelectionGrid.innerHTML = '';
+
+      state.vehicles.forEach(unit => {
+        const isSelected = state.selectedUnitIds.has(unit.id);
+        const isBusy = unit.status !== '待機中';
+
+        const label = document.createElement('label');
+        label.className = `flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition select-none ${
+          isSelected
+            ? 'bg-sky-950/90 border-sky-400 text-white font-bold shadow-sm'
+            : isBusy
+              ? 'bg-slate-950/40 border-slate-800/80 text-slate-500'
+              : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-600'
+        }`;
+
+        label.innerHTML = `
+          <div class="flex items-center gap-1.5 truncate">
+            <input type="checkbox" ${isSelected ? 'checked' : ''} class="accent-sky-400 rounded cursor-pointer" />
+            <span class="truncate">${unit.name}</span>
+          </div>
+          <span class="text-[10px] px-1.5 py-0.2 rounded shrink-0 ${
+            isBusy ? 'bg-red-950 text-red-400' : 'bg-slate-800 text-slate-400'
+          }">${isBusy ? '出動中' : unit.type}</span>
+        `;
+
+        const cb = label.querySelector('input');
+        cb.addEventListener('change', (e) => {
+          if (e.target.checked) {
+            state.selectedUnitIds.add(unit.id);
+          } else {
+            state.selectedUnitIds.delete(unit.id);
+          }
+          renderUnitSelectionGrid();
+          updateDispatchMessageIfNotManual();
+        });
+
+        DOM.unitSelectionGrid.appendChild(label);
+      });
+    }
+
+    // 指令電文の自動組み立て
+    function buildDispatchMessage() {
+      const catLabels = {
+        fire: { header: '火災指令', detail: '建物火災' },
+        ems: { header: '救急指令', detail: '急病・救急' },
+        rescue: { header: '救助指令', detail: '救助事故' }
+      };
+      const catInfo = catLabels[state.category];
+      const address = DOM.inputAddress.value.trim() || '住所未特定地域';
+      const landmark = DOM.inputLandmark.value.trim();
+      const targetPhrase = landmark ? `目標、${landmark}。` : '';
+
+      // チェックされた重点項目から要約フレーズを生成
+      const defs = CHECKLIST_DEFINITIONS[state.category] || [];
+      const checkedLabels = defs
+        .filter(d => state.checkedItems.has(d.id))
+        .map(d => d.label.replace(/（.*?）/g, ''));
+
+      const conditionPhrase = checkedLabels.length > 0
+        ? `${checkedLabels.slice(0, 2).join('、')}との通報。`
+        : '詳細調査中。';
+
+      // 選択された出動隊名リスト
+      const selectedNames = state.vehicles
+        .filter(v => state.selectedUnitIds.has(v.id))
+        .map(v => v.name);
+
+      const unitsPhrase = selectedNames.length > 0
+        ? `出動隊、${selectedNames.join('、')}。`
+        : '出動隊未指定。';
+
+      return `${catInfo.header}。${address}、${targetPhrase}${catInfo.detail}。${conditionPhrase}${unitsPhrase}以上、${catInfo.header}。`;
+    }
+
+    function updateDispatchMessageIfNotManual() {
+      if (!state.messageManuallyEdited) {
+        DOM.dispatchMessageBox.value = buildDispatchMessage();
+      }
+    }
+
+    // 車両動態管理ボード (AVM) 描画
+    function renderAvmBoard() {
+      DOM.avmBoardGrid.innerHTML = '';
+
+      state.vehicles.forEach(unit => {
+        const isActive = unit.status === '出動中';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.title = isActive ? 'クリックで帰署（待機状態に戻す）' : `${unit.station} / ${unit.type}`;
+
+        btn.className = `flex items-center justify-between px-2 py-1.5 rounded-lg border text-left transition ${
+          isActive
+            ? 'bg-red-950/90 border-red-500 text-red-100 hover:bg-red-900 shadow-sm cursor-pointer'
+            : 'bg-slate-950 border-slate-800 text-slate-300 cursor-default'
+        }`;
+
+        btn.innerHTML = `
+          <div class="truncate pr-1">
+            <div class="text-[11px] font-bold truncate">${unit.name}</div>
+            <div class="text-[9px] text-slate-400">${unit.type}</div>
+          </div>
+          <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 ${
+            isActive
+              ? 'bg-red-600 text-white'
+              : 'bg-emerald-950 text-emerald-400 border border-emerald-700/50'
+          }">
+            ${isActive ? '出動' : '待機'}
+          </span>
+        `;
+
+        if (isActive) {
+          btn.addEventListener('click', async () => {
+            await DataService.returnVehicle(unit.id);
+            renderAvmBoard();
+            renderUnitSelectionGrid();
+            showToast(`${unit.name} が帰署（待機中）になりました`, 'success');
+          });
+        }
+
+        DOM.avmBoardGrid.appendChild(btn);
+      });
+    }
+
+    // 指令履歴ログ描画
+    function renderDispatchLogs() {
+      DOM.logCountBadge.textContent = `${state.dispatchLogs.length} 件`;
+      if (state.dispatchLogs.length === 0) {
+        DOM.dispatchLogList.innerHTML = '<div class="text-xs text-slate-500 text-center py-3">まだ指令履歴はありません</div>';
+        return;
+      }
+
+      DOM.dispatchLogList.innerHTML = '';
+      state.dispatchLogs.forEach(log => {
+        const card = document.createElement('div');
+        card.className = 'bg-slate-950 border border-slate-800 rounded-lg p-2.5 space-y-1.5';
+        card.innerHTML = `
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-mono text-sky-400 font-bold">${log.timestamp}</span>
+            <button type="button" class="btn-replay text-[11px] px-2 py-0.5 rounded bg-slate-800 hover:bg-sky-900 text-sky-300 border border-slate-700 transition">
+              🔊 再放送
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-300 leading-snug">${log.message}</p>
+        `;
+        card.querySelector('.btn-replay').addEventListener('click', () => {
+          broadcastAudioSequence(log.message, log.chimeType);
+        });
+        DOM.dispatchLogList.appendChild(card);
+      });
+    }
+
+    /**
+     * =========================================================================
+     * 7. 119番擬似入電・受話・指令放送シーケンス
+     * =========================================================================
+     */
+    function startSimulated119Call() {
+      if (state.isRinging) return;
+
+      AudioEngine.ensureContext();
+      state.isRinging = true;
+      stopCallTimer();
+
+      // 着信音ループ開始
+      AudioEngine.playSingleRingBurst();
+      state.ringInterval = setInterval(() => {
+        if (state.isRinging) {
+          AudioEngine.playSingleRingBurst();
+        }
+      }, 2800);
+
+      // UI更新
+      DOM.callStatusBadge.textContent = '119番 着信中 / RINGING';
+      DOM.callStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded-full bg-red-950 text-red-300 border border-red-500 animate-pulse';
+
+      DOM.btnAnswerCall.disabled = false;
+      DOM.btnAnswerCall.className = 'px-3 py-1.5 rounded-lg text-white font-black text-xs sm:text-sm flex items-center gap-1.5 transition border border-red-300 animate-ringing cursor-pointer';
+      DOM.btnAnswerLabel.textContent = '受話 (応答する)';
+
+      showToast('📞 119番入電！「受話」ボタンを押して応答してください', 'danger');
+    }
+
+    function answer119Call() {
+      // 着信音停止
+      state.isRinging = false;
+      if (state.ringInterval) {
+        clearInterval(state.ringInterval);
+        state.ringInterval = null;
+      }
+
+      // 選択中のシナリオデータをロード
+      const idx = parseInt(DOM.scenarioSelect.value, 10) || 0;
+      loadScenarioPreset(idx);
+
+      // 受話タイマー開始
+      state.isCallActive = true;
+      state.callSeconds = 0;
+      DOM.callTimerDisplay.className = 'font-mono text-base sm:text-lg font-extrabold text-red-400 tracking-wider leading-tight';
+      updateCallTimerText();
+
+      if (state.callTimerInterval) clearInterval(state.callTimerInterval);
+      state.callTimerInterval = setInterval(() => {
+        state.callSeconds++;
+        updateCallTimerText();
+      }, 1000);
+
+      // UI更新
+      DOM.callStatusBadge.textContent = '受令通話中 / ACTIVE CALL';
+      DOM.callStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500';
+
+      DOM.btnAnswerCall.disabled = true;
+      DOM.btnAnswerCall.className = 'px-3 py-1.5 rounded-lg bg-emerald-950 text-emerald-300 font-bold text-xs sm:text-sm flex items-center gap-1.5 border border-emerald-600/60 cursor-default';
+      DOM.btnAnswerLabel.textContent = '通話中';
+
+      showToast('119番受話完了。発信地情報と聴取内容を確認してください', 'info');
+    }
+
+    function stopCallTimer() {
+      state.isCallActive = false;
+      if (state.callTimerInterval) {
+        clearInterval(state.callTimerInterval);
+        state.callTimerInterval = null;
+      }
+    }
+
+    function updateCallTimerText() {
+      const m = String(Math.floor(state.callSeconds / 60)).padStart(2, '0');
+      const s = String(state.callSeconds % 60).padStart(2, '0');
+      DOM.callTimerDisplay.textContent = `${m}:${s}`;
+    }
+
+    function loadScenarioPreset(index) {
+      const sc = SCENARIOS[index] || SCENARIOS[0];
+      state.messageManuallyEdited = false;
+
+      DOM.btnToggleLineType.textContent = sc.lineType;
+      DOM.inputPhone.value = sc.phone;
+      DOM.inputAddress.value = sc.address;
+      DOM.inputLandmark.value = sc.landmark;
+      DOM.inputMemo.value = sc.memo;
+
+      setCategory(sc.category, false);
+    }
+
+    // 予告チャイム＋PTTトーン＋音声合成＋スケルチ音の一連放送処理
+    async function broadcastAudioSequence(messageText, chimeType) {
+      if (state.isBroadcasting) {
+        showToast('現在指令放送中です', 'warning');
+        return;
+      }
+
+      state.isBroadcasting = true;
+      DOM.onAirIndicator.classList.remove('hidden');
+      DOM.onAirIndicator.classList.add('flex');
+
+      try {
+        // 1. 予告チャイム再生
+        await AudioEngine.playDispatchChime(chimeType);
+
+        // 2. 無線PTT開始トーン（「ピッ」）
+        AudioEngine.playPttStartTone();
+        await new Promise(r => setTimeout(r, 120));
+
+        // 3. 合成音声による指令読み上げ
+        const rate = parseFloat(DOM.speechRateRange.value) || 1.05;
+        await SpeechEngine.speak(messageText, rate);
+
+        // 4. 無線スケルチテール音（「ザッ」）
+        AudioEngine.playSquelchTail();
+      } finally {
+        state.isBroadcasting = false;
+        DOM.onAirIndicator.classList.add('hidden');
+        DOM.onAirIndicator.classList.remove('flex');
+      }
+    }
+
+    // 指令発令メイン処理
+    async function executeDispatch() {
+      if (!DOM.safetyArmToggle.checked) {
+        showToast('⚠️ 安全カバーがロックされています。右上の「ARMED」スイッチをONにしてください', 'warning');
+        return;
+      }
+
+      const unitIds = Array.from(state.selectedUnitIds);
+      if (unitIds.length === 0) {
+        showToast('⚠️ 出動隊が1隊も選択されていません', 'warning');
+        return;
+      }
+
+      const message = DOM.dispatchMessageBox.value.trim();
+      if (!message) {
+        showToast('⚠️ 指令電文が空です', 'warning');
+        return;
+      }
+
+      const chimeType = DOM.chimeSelect.value;
+
+      // 通話タイマー停止（受令完了）
+      if (state.isCallActive) {
+        stopCallTimer();
+        DOM.callStatusBadge.textContent = '指令発令済 / DISPATCHED';
+        DOM.callStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-500';
+      }
+
+      // 車両ステータスを「出動中」に更新
+      await DataService.dispatchVehicles(unitIds, {
+        address: DOM.inputAddress.value,
+        category: state.category,
+        message
+      });
+
+      // 選択状態をリセットし、AVMボードと編成リストを再描画
+      state.selectedUnitIds.clear();
+      renderAvmBoard();
+      renderUnitSelectionGrid();
+
+      // 指令履歴へ追加
+      const nowStr = DOM.jstClockDisplay.textContent;
+      state.dispatchLogs.unshift({
+        timestamp: `${nowStr} 発令`,
+        message,
+        chimeType
+      });
+      renderDispatchLogs();
+
+      showToast(`🚨 指令発令完了（${unitIds.length}隊 出動）`, 'danger');
+
+      // 指令放送シーケンス実行
+      await broadcastAudioSequence(message, chimeType);
+    }
+
+    /**
+     * =========================================================================
+     * 8. イベントリスナー登録 & 初期化
+     * =========================================================================
+     */
+    function bindEvents() {
+      // シナリオ変更時は即座にフォームへプレビュー反映（テストしやすいように）
+      DOM.scenarioSelect.addEventListener('change', (e) => {
+        const idx = parseInt(e.target.value, 10) || 0;
+        loadScenarioPreset(idx);
+      });
+
+      DOM.btnSimulateCall.addEventListener('click', startSimulated119Call);
+      DOM.btnAnswerCall.addEventListener('click', answer119Call);
+
+      // 音響テストボタン
+      DOM.btnTestChime.addEventListener('click', () => {
+        AudioEngine.playDispatchChime(DOM.chimeSelect.value);
+        showToast('予告指令チャイムをテスト再生しました', 'info');
+      });
+
+      DOM.btnTestTTS.addEventListener('click', () => {
+        broadcastAudioSequence('試験放送。こちらは横浜消防指令センター。各隊、感度良好。', DOM.chimeSelect.value);
+      });
+
+      // 回線種別トグル
+      DOM.btnToggleLineType.addEventListener('click', () => {
+        const next = DOM.btnToggleLineType.textContent === '携帯電話GPS' ? '固定電話' : '携帯電話GPS';
+        DOM.btnToggleLineType.textContent = next;
+      });
+
+      // 災害種別タブ
+      DOM.catTabs.forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.messageManuallyEdited = false;
+          setCategory(btn.dataset.category, false);
+        });
+      });
+
+      // 住所・目標物・メモ入力時のリアルタイム連動
+      DOM.inputAddress.addEventListener('input', updateDispatchMessageIfNotManual);
+      DOM.inputLandmark.addEventListener('input', updateDispatchMessageIfNotManual);
+      DOM.inputMemo.addEventListener('input', () => {
+        analyzeMemoAndTriage(true);
+      });
+
+      DOM.btnClearMemo.addEventListener('click', () => {
+        DOM.inputMemo.value = '';
+        state.checkedItems.clear();
+        state.messageManuallyEdited = false;
+        analyzeMemoAndTriage(true);
+      });
+
+      // 自動再編成ボタン
+      DOM.btnReassignUnits.addEventListener('click', () => {
+        state.messageManuallyEdited = false;
+        autoSelectUnits(state.triageResult.requiredTypes);
+        showToast('待機車両から最適部隊を再編成しました', 'info');
+      });
+
+      // 指令電文の手動編集検知 & 再生成ボタン
+      DOM.dispatchMessageBox.addEventListener('input', () => {
+        state.messageManuallyEdited = true;
+      });
+
+      DOM.btnSyncMessage.addEventListener('click', () => {
+        state.messageManuallyEdited = false;
+        updateDispatchMessageIfNotManual();
+        showToast('最新の聴取内容と編成から指令電文を再生成しました', 'info');
+      });
+
+      // 読み上げ速度スライダー
+      DOM.speechRateRange.addEventListener('input', (e) => {
+        DOM.speechRateLabel.textContent = `${parseFloat(e.target.value).toFixed(2)}x`;
+      });
+
+      // 安全カバー解除トグル
+      DOM.safetyArmToggle.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          DOM.safetyArmLabel.textContent = 'ARMED (発令可)';
+          DOM.safetyArmLabel.className = 'text-xs font-mono font-bold text-red-400';
+          DOM.btnExecuteDispatch.classList.remove('opacity-50');
+        } else {
+          DOM.safetyArmLabel.textContent = 'SAFE (ロック中)';
+          DOM.safetyArmLabel.className = 'text-xs font-mono font-bold text-slate-400';
+          DOM.btnExecuteDispatch.classList.add('opacity-50');
+        }
+      });
+
+      // 指令発令実行
+      DOM.btnExecuteDispatch.addEventListener('click', executeDispatch);
+
+      // 全隊帰署ボタン
+      DOM.btnReturnAllUnits.addEventListener('click', async () => {
+        await DataService.returnAllVehicles();
+        renderAvmBoard();
+        autoSelectUnits(state.triageResult.requiredTypes);
+        showToast('全車両が帰署し「待機中」に戻りました', 'success');
+      });
+    }
+
+    // アプリケーション起動
+    window.addEventListener('DOMContentLoaded', () => {
+      cacheDOM();
+      SpeechEngine.init();
+      bindEvents();
+
+      // 時計開始
+      updateClock();
+      setInterval(updateClock, 1000);
+
+      // 初期状態ロード（シナリオ0を初期セット）
+      renderAvmBoard();
+      loadScenarioPreset(0);
+    });
+  </script>
+</body>
+</html>
