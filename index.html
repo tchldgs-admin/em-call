@@ -47,11 +47,12 @@
     <!-- 119番受令・終話・リセットコントロール -->
     <div class="flex flex-wrap items-center gap-1.5">
       <select id="scenarioSelect" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-sky-500">
-        <option value="fire_high">訓練1【火災】：吾妻1丁目 商業ビル火災（逃げ遅れ）</option>
-        <option value="rescue_trap">訓練2【救助】：谷田部IC付近 衝突事故（閉じ込め）</option>
-        <option value="ems_cpa">訓練3【救急】：研究学園5丁目 急病（意識・呼吸なし）</option>
-        <option value="hazard_gas">訓練4【危険排除】：並木3丁目 ガス管破損・漏洩</option>
-        <option value="confirm_safety">訓練5【緊急確認】：筑穂2丁目 独居高齢者安否確認</option>
+        <option value="empty" selected>空のシナリオ（手動入力モード）</option>
+        <option value="fire">通報種別：火災（ランダム入電）</option>
+        <option value="rescue">通報種別：救助（ランダム入電）</option>
+        <option value="ems">通報種別：救急（ランダム入電）</option>
+        <option value="hazard">通報種別：危険排除（ランダム入電）</option>
+        <option value="confirm">通報種別：緊急確認（ランダム入電）</option>
       </select>
 
       <button id="btnIncomingCall" onclick="triggerIncomingCall()" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-2.5 py-1.5 rounded shadow transition cursor-pointer">
@@ -174,7 +175,7 @@
 
         <div id="checklistContainer" class="grid grid-cols-2 gap-1.5 text-xs"></div>
 
-        <textarea id="inputMemo" rows="3" oninput="onManualInput(); analyzeReception();" placeholder="詳細聴取内容を入力（危険ワード自動検知）" class="w-full flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white leading-relaxed focus:border-sky-500 focus:outline-none"></textarea>
+        <textarea id="inputMemo" rows="3" oninput="onManualInput(); analyzeReception();" placeholder="詳細聴取内容を入力（危険ワード自動検知・本指令電文へ全文反映）" class="w-full flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white leading-relaxed focus:border-sky-500 focus:outline-none"></textarea>
 
         <button type="button" id="btnFinishListening" onclick="finishDetailedListening()" class="w-full py-2 rounded bg-amber-700 hover:bg-amber-600 text-white font-bold text-xs border border-amber-400/50 transition cursor-pointer">
           詳細聴取完了 ➡︎ ⑤ 本指令へ
@@ -254,7 +255,7 @@
       <!-- STEP 5: 本指令ブロック -->
       <div class="bg-rose-950/25 border border-rose-700/50 rounded-lg p-2.5 space-y-1.5">
         <div class="flex items-center justify-between">
-          <span class="text-[11px] font-bold text-rose-300">【STEP 5】本指令電文（詳細聴取反映・出動確定）</span>
+          <span class="text-[11px] font-bold text-rose-300">【STEP 5】本指令電文（詳細聴取全文反映・出動確定）</span>
         </div>
         <textarea id="mainDispatchText" rows="3" class="w-full bg-black/70 border border-slate-700 rounded p-1.5 text-xs text-rose-200 font-mono leading-relaxed focus:border-rose-500 focus:outline-none"></textarea>
         <button id="btnMainDispatch" onclick="executeMainDispatch()" class="w-full py-2.5 rounded bg-gradient-to-r from-rose-700 to-red-600 hover:from-rose-600 hover:to-red-500 text-white font-bold text-xs tracking-widest border border-rose-400/50 shadow-lg transition cursor-pointer">
@@ -312,65 +313,285 @@
       { code: 'KUKIZAKI-A1', name: '茎崎救急1', station: '茎崎消防署', type: 'ambulance', type_label: '高規格救急車', status: 'standby' }
     ];
 
-    // つくば市内 5種別対応訓練シナリオ
-    const SCENARIOS = {
-      fire_high: {
-        disasterType: 'fire',
-        subType: '建物火災',
-        callerType: '固定電話（住所特定）',
-        address: 'つくば市吾妻1丁目8番地付近',
-        landmark: 'つくば駅北側商業ビル',
-        memo: '4階建てビルの3階窓から黒煙と炎が噴き出している。3階に1人逃げ遅れがいる模様。'
-      },
-      rescue_trap: {
-        disasterType: 'rescue',
-        subType: '交通事故救助',
-        callerType: '携帯電話（GPS測位）',
-        address: 'つくば市谷田部4700番地付近',
-        landmark: '常磐道谷田部インターチェンジ入口交差点',
-        memo: '乗用車とトラックの衝突事故。乗用車のドアが変形し運転手が車内に閉じ込められている。'
-      },
-      ems_cpa: {
-        disasterType: 'ems',
-        subType: '急病',
-        callerType: '携帯電話（GPS測位）',
-        address: 'つくば市研究学園5丁目19番地付近',
-        landmark: '研究学園駅前公園東側歩道',
-        memo: '60代男性が突然倒れた。呼びかけに反応なく意識なし、呼吸もしていない。'
-      },
-      hazard_gas: {
-        disasterType: 'hazard',
-        subType: 'ガス漏洩警戒',
-        callerType: '携帯電話（GPS測位）',
-        address: 'つくば市並木3丁目12番地付近',
-        landmark: '並木ショッピングセンター南側道路',
-        memo: '道路掘削工事中に重機がガス管を破損し、強いガス臭と噴出音がしている。'
-      },
-      confirm_safety: {
-        disasterType: 'confirm',
-        subType: '安否確認・調査',
-        callerType: '固定電話（住所特定）',
-        address: 'つくば市筑穂2丁目5番地付近',
-        landmark: '大穂窓口センター西側住宅地',
-        memo: '親族から連絡が取れないとの通報。玄関施錠されており室内から呼びかけに応答なし。'
-      }
+    // つくば市内 5種別×10件（計50件）ランダム訓練シナリオプール
+    const SCENARIO_POOLS = {
+      fire: [
+        {
+          disasterType: 'fire', subType: '建物火災', callerType: '固定電話（住所特定）',
+          address: 'つくば市吾妻1丁目8番地付近', landmark: 'つくば駅北側商業ビル',
+          memo: '4階建てビルの3階窓から黒煙と炎が噴き出している。3階に1人逃げ遅れがいる模様。'
+        },
+        {
+          disasterType: 'fire', subType: '建物火災', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市天久保3丁目15番地付近', landmark: '筑波大学学生宿舎南側アパート',
+          memo: '2階建て木造アパートの1階台所から出火し天井に燃え移っている。住民は全員避難済。'
+        },
+        {
+          disasterType: 'fire', subType: '建物火災', callerType: '映像119連携',
+          address: 'つくば市研究学園5丁目19番地付近', landmark: '大型商業施設北側飲食店街',
+          memo: '飲食店の排気ダクト付近から炎と激しい黒煙が上がっている。隣接店舗への延焼危険あり。'
+        },
+        {
+          disasterType: 'fire', subType: '林野火災', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市筑波750番地付近', landmark: '筑波山神社門前通り東側山林',
+          memo: '雑木林の枯れ草が広範囲に燃えており、風にあおられて山側へ延焼中。'
+        },
+        {
+          disasterType: 'fire', subType: '車両火災', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市谷田部4700番地付近', landmark: '常磐道谷田部インターチェンジ入口付近',
+          memo: '大型トラックのエンジンルームから黒煙が上がり炎が見えている。積み荷に危険物なし。'
+        },
+        {
+          disasterType: 'fire', subType: '中高層建物火災', callerType: '固定電話（住所特定）',
+          address: 'つくば市竹園2丁目10番地付近', landmark: '竹園ショッピングセンター東側マンション',
+          memo: '10階建てマンションの5階ベランダから白煙が噴出している。室内の住民と連絡取れず。'
+        },
+        {
+          disasterType: 'fire', subType: '火災調査（自火報）', callerType: '固定電話（住所特定）',
+          address: 'つくば市天王台1丁目1番地付近', landmark: '筑波大学筑波キャンパス研究棟',
+          memo: '自動火災報知設備のベルが鳴動中。現在のところ煙や炎は確認できていない。'
+        },
+        {
+          disasterType: 'fire', subType: '建物火災', callerType: '固定電話（住所特定）',
+          address: 'つくば市並木4丁目8番地付近', landmark: '並木中等教育学校西側住宅地',
+          memo: '一般住宅の庭先で焚き火の火が物置小屋に燃え移り炎上している。カセットボンベの爆発音あり。'
+        },
+        {
+          disasterType: 'fire', subType: 'その他火災', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市上郷3200番地付近', landmark: '豊里ゆかりの森南側資材置場',
+          memo: '屋外の廃材とプラスチック資材が激しく燃えており、黒煙が上空に上がっている。'
+        },
+        {
+          disasterType: 'fire', subType: '建物火災', callerType: '固定電話（住所特定）',
+          address: 'つくば市高見原2丁目14番地付近', landmark: '茎崎運動公園北側住宅地',
+          memo: '2階建て住宅の2階寝室から煙が噴き出している。高齢の住民1名が取り残されている可能性あり。'
+        }
+      ],
+      rescue: [
+        {
+          disasterType: 'rescue', subType: '交通事故救助', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市谷田部4700番地付近', landmark: '常磐道谷田部インターチェンジ入口交差点',
+          memo: '乗用車とトラックの衝突事故。乗用車のドアが変形し運転手が車内に閉じ込められている。'
+        },
+        {
+          disasterType: 'rescue', subType: '山岳救助', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市筑波1番地付近', landmark: '筑波山白雲橋コース弁慶茶屋跡付近',
+          memo: '登山中の50代男性が足を滑らせて登山道脇の斜面へ約5メートル転落し、動けなくなっている。'
+        },
+        {
+          disasterType: 'rescue', subType: '閉じ込め救助', callerType: '固定電話（住所特定）',
+          address: 'つくば市研究学園1丁目1番地付近', landmark: 'つくば市役所南側商業ビル',
+          memo: 'エレベーターが3階と4階の間で緊急停止し、中に大人3名が閉じ込められている。'
+        },
+        {
+          disasterType: 'rescue', subType: '水難救助', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市柴崎650番地付近', landmark: '桜川・栄橋下流河川敷',
+          memo: '増水した桜川の中州に釣り人1名が取り残され、流れが速く岸に戻れなくなっている。'
+        },
+        {
+          disasterType: 'rescue', subType: '労働災害救助', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市みどりの1丁目20番地付近', landmark: 'みどりの駅東側建築工事現場',
+          memo: '工事現場の足場が一部崩落し、作業員1名が鉄パイプに足を挟まれ自力で動けない。'
+        },
+        {
+          disasterType: 'rescue', subType: '交通事故救助', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市大穂210番地付近', landmark: '国道408号大穂交差点北側',
+          memo: '軽自動車が電柱に衝突して横転し、車内に運転手が閉じ込められ燃料漏れあり。'
+        },
+        {
+          disasterType: 'rescue', subType: '機械挟まれ救助', callerType: '固定電話（住所特定）',
+          address: 'つくば市吾妻2丁目7番地付近', landmark: '中央公園西側立体駐車場',
+          memo: '機械式立体駐車場のパレット隙間に点検作業員が挟まれ、意識はあるが脱出不能。'
+        },
+        {
+          disasterType: 'rescue', subType: '車両転落救助', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市茎崎1800番地付近', landmark: '牛久沼北岸・細見橋西側道路',
+          memo: '軽トラックが道路脇の用水路へ転落し水没しかけており、運転手が車内から出られない。'
+        },
+        {
+          disasterType: 'rescue', subType: '交通事故救助', callerType: '映像119連携',
+          address: 'つくば市学園の森3丁目48番地付近', landmark: '学園の森大通り東側交差点',
+          memo: '交差点での出合い頭衝突事故。双方の車両が大破し助手席の乗員1名が閉じ込められている。'
+        },
+        {
+          disasterType: 'rescue', subType: '倒木挟まれ救助', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市北条1400番地付近', landmark: '北条商店街北側山林農道',
+          memo: '山林内で農作業中の70代男性が倒木の下敷きになり、腰を挟まれて動けなくなっている。'
+        }
+      ],
+      ems: [
+        {
+          disasterType: 'ems', subType: '急病', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市研究学園5丁目19番地付近', landmark: '研究学園駅前公園東側歩道',
+          memo: '60代男性が突然倒れた。呼びかけに反応なく意識なし、呼吸もしていない。'
+        },
+        {
+          disasterType: 'ems', subType: '一般負傷', callerType: '固定電話（住所特定）',
+          address: 'つくば市竹園2丁目10番地付近', landmark: '竹園ショッピングセンター前',
+          memo: '段差でつまずいて転倒し右足首を痛めた。意識清明で会話可能、出血なし。'
+        },
+        {
+          disasterType: 'ems', subType: '急病', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市吾妻1丁目1番地付近', landmark: 'つくばセンターバスターミナル3番乗り場',
+          memo: '50代男性が突然激しい胸痛を訴えてうずくまっている。冷や汗がひどく顔面蒼白。'
+        },
+        {
+          disasterType: 'ems', subType: '一般負傷', callerType: '固定電話（住所特定）',
+          address: 'つくば市天久保2丁目14番地付近', landmark: '松見公園南側アパート2階',
+          memo: '調理中に包丁で左手を深く切り、圧迫しても血が止まらない大量出血状態。'
+        },
+        {
+          disasterType: 'ems', subType: '急病', callerType: '固定電話（住所特定）',
+          address: 'つくば市春日4丁目12番地付近', landmark: '筑波大学春日エリア西側マンション',
+          memo: '70代女性が食事中に突然ろれつが回らなくなり、右半身の麻痺を訴えている。意識はある。'
+        },
+        {
+          disasterType: 'ems', subType: '交通事故負傷', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市みどりの2丁目5番地付近', landmark: 'みどりの駅南側歩道',
+          memo: '自転車同士の接触事故で20代女性が転倒。頭部を打撲したが意識清明で会話可能。'
+        },
+        {
+          disasterType: 'ems', subType: '急病', callerType: '固定電話（住所特定）',
+          address: 'つくば市桜1丁目22番地付近', landmark: 'テクノパーク桜南側工場内',
+          memo: '作業中の40代男性が熱中症様症状で意識が朦朧としており、呼びかけへの反応が鈍い。'
+        },
+        {
+          disasterType: 'ems', subType: '一般負傷', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市二の宮3丁目18番地付近', landmark: '洞峰公園西側ジョギングコース',
+          memo: 'ランニング中の30代男性が転倒し左肩を強く打撲。意識清明、自力歩行可能だが痛みが強い。'
+        },
+        {
+          disasterType: 'ems', subType: '水難・溺水救急', callerType: '固定電話（住所特定）',
+          address: 'つくば市吉沼1100番地付近', landmark: '吉沼小学校北側一般住宅浴室',
+          memo: '80代男性が浴槽内で顔が浸かった状態で発見された。家族が引き上げたが意識なし、呼吸なし。'
+        },
+        {
+          disasterType: 'ems', subType: '一般負傷', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市松代2丁目15番地付近', landmark: '手代木南小学校付近児童公園',
+          memo: '遊具から落下した小学生男児が右腕の痛みを訴えている。意識清明で会話可能。'
+        }
+      ],
+      hazard: [
+        {
+          disasterType: 'hazard', subType: 'ガス漏洩警戒', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市並木3丁目12番地付近', landmark: '並木ショッピングセンター南側道路',
+          memo: '道路掘削工事中に重機がガス管を破損し、強いガス臭と噴出音がしている。'
+        },
+        {
+          disasterType: 'hazard', subType: '危険物流出警戒', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市東新井24番地付近', landmark: '学園東大通り東新井交差点',
+          memo: '大型タンクローリーの燃料タンクが損傷し、路面へ軽油が大量に流出している。'
+        },
+        {
+          disasterType: 'hazard', subType: '電線垂下警戒', callerType: '固定電話（住所特定）',
+          address: 'つくば市千現2丁目1番地付近', landmark: '研究機関西側市道歩道上',
+          memo: '強風により街路樹が倒れて電線を切断し、道路上に電線が垂れ下がっている。'
+        },
+        {
+          disasterType: 'hazard', subType: 'ガス漏洩警戒', callerType: '固定電話（住所特定）',
+          address: 'つくば市梅園2丁目20番地付近', landmark: '梅園公園北側住宅地',
+          memo: '住宅敷地内のLPガスボンベ調整器付近から白煙状のガスが噴出し、周囲に異臭が充満している。'
+        },
+        {
+          disasterType: 'hazard', subType: '落下危険排除', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市学園南3丁目2番地付近', landmark: '研究学園駅南側12階建てマンション',
+          memo: '外壁補修工事用の看板が強風で外れかかり、歩道上へ落下する危険がある。'
+        },
+        {
+          disasterType: 'hazard', subType: '薬品流出警戒', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市豊里の杜1丁目5番地付近', landmark: '豊里ゆかりの森入口付近県道',
+          memo: 'トラックの荷台から薬品ポリタンクが落下破損し、刺激臭のある液体が流出している。'
+        },
+        {
+          disasterType: 'hazard', subType: '土砂・電柱傾斜警戒', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市小田4600番地付近', landmark: '宝篋山小田休憩所北側市道',
+          memo: '斜面からの土砂崩れと落石により道路が塞がれ、電柱が大きく傾いている。'
+        },
+        {
+          disasterType: 'hazard', subType: '電線火花警戒', callerType: '固定電話（住所特定）',
+          address: 'つくば市栗原2900番地付近', landmark: '筑波実験植物園北側市道',
+          memo: '大型トラックの接触により高圧電線が垂れ下がり、火花が散っている。周囲住民の避難が必要。'
+        },
+        {
+          disasterType: 'hazard', subType: '油流出処理', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市観音台3丁目1番地付近', landmark: '観音台研究施設前県道交差点',
+          memo: '農業用トラクターから油圧オイルが広範囲に流出しており、後続車のスリップ危険がある。'
+        },
+        {
+          disasterType: 'hazard', subType: '落下危険排除', callerType: '固定電話（住所特定）',
+          address: 'つくば市稲荷前18番地付近', landmark: '赤塚公園西側住宅地',
+          memo: '空き家のトタン屋根が強風で剥がれ、道路側へぶら下がって落下する危険がある。'
+        }
+      ],
+      confirm: [
+        {
+          disasterType: 'confirm', subType: '安否確認・調査', callerType: '固定電話（住所特定）',
+          address: 'つくば市筑穂2丁目5番地付近', landmark: '大穂窓口センター西側住宅地',
+          memo: '親族から数日連絡が取れないとの通報。玄関施錠されており室内から呼びかけに応答なし。'
+        },
+        {
+          disasterType: 'confirm', subType: '安否確認・調査', callerType: '固定電話（住所特定）',
+          address: 'つくば市花室1050番地付近', landmark: '学園東大通り花室交差点付近マンション',
+          memo: '一人暮らしの80代女性と連絡が取れず、郵便受けに新聞が溜まっている。玄関施錠あり、応答なし。'
+        },
+        {
+          disasterType: 'confirm', subType: '異臭確認・調査', callerType: '固定電話（住所特定）',
+          address: 'つくば市吾妻3丁目14番地付近', landmark: '吾妻小学校東側集合住宅2階',
+          memo: '階下の部屋から焦げ臭いにおいがするとの通報。現在のところ煙や炎は見えない。'
+        },
+        {
+          disasterType: 'confirm', subType: '警報確認・調査', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市天久保1丁目8番地付近', landmark: '筑波大学平砂宿舎東側アパート',
+          memo: '住宅用火災警報器の警報音が鳴り続けているとの119番通報。外から煙は確認できない。'
+        },
+        {
+          disasterType: 'confirm', subType: '安否確認・調査', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市自由ヶ丘720番地付近', landmark: '茎崎窓口センター北側住宅地',
+          memo: '介護ヘルパーからの通報。訪問したが玄関が施錠されており、室内からうめき声のような音が聞こえる。'
+        },
+        {
+          disasterType: 'confirm', subType: '自火報確認・調査', callerType: '固定電話（住所特定）',
+          address: 'つくば市東光台3丁目10番地付近', landmark: '東光台工業団地内物流倉庫',
+          memo: '無人倉庫の自動火災報知設備が作動し警備会社から通報。煙や炎の有無は未確認。'
+        },
+        {
+          disasterType: 'confirm', subType: '安否確認・調査', callerType: '固定電話（住所特定）',
+          address: 'つくば市春日2丁目30番地付近', landmark: '春日学園義務教育学校南側アパート',
+          memo: '室内で高齢者が転倒した音がした後、呼びかけに応答がないとの隣人からの通報。玄関施錠あり。'
+        },
+        {
+          disasterType: 'confirm', subType: '警報確認・調査', callerType: '携帯電話（GPS測位）',
+          address: 'つくば市谷田部2980番地付近', landmark: '谷田部窓口センター付近商業店舗',
+          memo: '閉店後の店舗内でガス警報器のブザーが鳴動しているとの通行人からの通報。異臭は感じない。'
+        },
+        {
+          disasterType: 'confirm', subType: '緊急捜索確認', callerType: '固定電話（住所特定）',
+          address: 'つくば市桜3丁目15番地付近', landmark: '桜窓口センター東側住宅地',
+          memo: '認知症の高齢者が自宅からいなくなり、近くの用水路付近で目撃されたとの家族からの緊急確認依頼。'
+        },
+        {
+          disasterType: 'confirm', subType: '安否確認・調査', callerType: '固定電話（住所特定）',
+          address: 'つくば市二の宮1丁目11番地付近', landmark: '洞峰公園北側マンション4階',
+          memo: 'ベランダに洗濯物が干されたまま数日間照明がつきっぱなしで、インターホンに応答がないとの管理人からの通報。'
+        }
+      ]
     };
 
     // 5種別ごとの聴取チェック項目と自動判定キーワード
     const CHECKLIST_CONFIG = {
       fire: [
-        { id: 'f_flame', label: '炎・火炎の視認', keywords: ['炎', '火の手', '燃えて'] },
+        { id: 'f_flame', label: '炎・火炎の視認', keywords: ['炎', '火の手', '燃えて', '炎上'] },
         { id: 'f_smoke', label: '黒煙・白煙の噴出', keywords: ['黒煙', '煙', '白煙'] },
         { id: 'f_trapped', label: '逃げ遅れ・要救助者', keywords: ['逃げ遅れ', '閉じ込め', '中に人', '取り残'] },
         { id: 'f_building', label: '中高層・密集建物', keywords: ['ビル', 'マンション', '階', 'アパート'] },
         { id: 'f_danger', label: '危険物・爆発音', keywords: ['爆発', 'ガス', 'ガソリン', 'ボンベ'] },
-        { id: 'f_alarm', label: '警報ベル鳴動のみ', keywords: ['報知', 'ベル', '誤報', '煙なし'] }
+        { id: 'f_alarm', label: '警報ベル鳴動のみ', keywords: ['報知', 'ベル', '誤報', '煙なし', '確認できていない'] }
       ],
       rescue: [
-        { id: 'r_trap', label: '車内・機械への閉じ込め', keywords: ['閉じ込め', '挟まれ', '出られない'] },
-        { id: 'r_traffic', label: '交通事故（衝突・転落）', keywords: ['事故', '衝突', '横転', '車両'] },
-        { id: 'r_high', label: '高所・水難・山岳救助', keywords: ['エレベータ', '転落', '川', '筑波山', '高所'] },
-        { id: 'r_leak', label: '燃料漏れ・二次災害危険', keywords: ['燃料', 'オイル', '漏', '煙'] }
+        { id: 'r_trap', label: '車内・機械への閉じ込め', keywords: ['閉じ込め', '挟まれ', '出られない', '脱出不能'] },
+        { id: 'r_traffic', label: '交通事故（衝突・転落）', keywords: ['事故', '衝突', '横転', '車両', '転落'] },
+        { id: 'r_high', label: '高所・水難・山岳救助', keywords: ['エレベータ', '転落', '川', '筑波山', '中州', '水没'] },
+        { id: 'r_leak', label: '燃料漏れ・二次災害危険', keywords: ['燃料', 'オイル', '漏', '煙', '崩落'] }
       ],
       ems: [
         { id: 'e_no_resp', label: '意識なし・反応なし', keywords: ['意識なし', '反応なし', '気絶', '呼びかけ'] },
@@ -378,19 +599,19 @@
         { id: 'e_bleed', label: '大量出血・外傷', keywords: ['大量出血', '血が止まらない', '吐血'] },
         { id: 'e_chest', label: '激しい胸痛・麻痺', keywords: ['胸痛', '胸が痛い', 'ろれつ', '麻痺'] },
         { id: 'e_conscious', label: '意識清明・会話可能', keywords: ['意識清明', '会話可能', '話せる'] },
-        { id: 'e_minor', label: '軽傷・歩行困難程度', keywords: ['足首', '打撲', 'すり傷', '軽傷'] }
+        { id: 'e_minor', label: '軽傷・歩行困難程度', keywords: ['足首', '打撲', 'すり傷', '軽傷', '落下'] }
       ],
       hazard: [
-        { id: 'h_gas', label: '都市ガス・LPガス漏洩', keywords: ['ガス', 'プロパン', '噴出音'] },
-        { id: 'h_oil', label: '危険物・燃料油流出', keywords: ['油', 'ガソリン', '軽油', '薬品', '流出'] },
-        { id: 'h_wire', label: '電線垂下・倒木・落下物', keywords: ['電線', '倒木', '看板', '落下'] },
-        { id: 'h_evac', label: '周囲住民の避難必要', keywords: ['避難', '異臭', '刺激臭', '立ち入り'] }
+        { id: 'h_gas', label: '都市ガス・LPガス漏洩', keywords: ['ガス', 'プロパン', '噴出音', '噴出'] },
+        { id: 'h_oil', label: '危険物・燃料油流出', keywords: ['油', 'ガソリン', '軽油', '薬品', '流出', 'オイル'] },
+        { id: 'h_wire', label: '電線垂下・倒木・落下物', keywords: ['電線', '倒木', '看板', '落下', '土砂', '電柱'] },
+        { id: 'h_evac', label: '周囲住民の避難必要', keywords: ['避難', '異臭', '刺激臭', '立ち入り', '火花'] }
       ],
       confirm: [
-        { id: 'c_no_ans', label: '室内呼びかけ応答なし', keywords: ['応答なし', '返事がない', '連絡が取れない'] },
+        { id: 'c_no_ans', label: '室内呼びかけ応答なし', keywords: ['応答なし', '返事がない', '連絡が取れない', 'うめき声'] },
         { id: 'c_locked', label: '玄関・窓の施錠あり', keywords: ['施錠', '鍵', '開かない'] },
         { id: 'c_alarm', label: '自火報・警報器鳴動', keywords: ['報知', 'ベル', '警報', 'ブザー'] },
-        { id: 'c_smell', label: '焦げ臭・煙の調査依頼', keywords: ['焦げ臭', '臭い', '煙', '確認'] }
+        { id: 'c_smell', label: '焦げ臭・煙の調査依頼', keywords: ['焦げ臭', '臭い', '煙', '確認', 'いなくなり'] }
       ]
     };
 
@@ -406,11 +627,12 @@
     let callTimerInterval = null;
     let callSeconds = 0;
 
-    // 初期化処理
+    // 初期化処理（空のシナリオから開始）
     window.addEventListener('DOMContentLoaded', () => {
       updateClock();
       setInterval(updateClock, 1000);
       setDisasterType('fire');
+      clearFormInputsOnly();
       renderAvmList();
       updateCallControlButtons();
       setSequenceStep(1);
@@ -723,7 +945,7 @@
       }
     }
 
-    // 受話応答（シナリオ展開 ➡︎ STEP 2 災害点特定へ）
+    // 受話応答（空シナリオまたは選択種別からランダム抽出しSTEP 2へ）
     function answerCall() {
       stopRingtone();
       callState = 'connected';
@@ -739,9 +961,15 @@
         document.getElementById('callTimer').textContent = `${m}:${s}`;
       }, 1000);
 
-      const key = document.getElementById('scenarioSelect').value;
-      const sc = SCENARIOS[key];
-      if (sc) {
+      const selectedType = document.getElementById('scenarioSelect').value;
+      if (selectedType === 'empty') {
+        clearFormInputsOnly();
+        return;
+      }
+
+      const pool = SCENARIO_POOLS[selectedType];
+      if (pool && pool.length > 0) {
+        const sc = pool[Math.floor(Math.random() * pool.length)];
         setDisasterType(sc.disasterType);
         document.getElementById('callerType').value = sc.callerType;
         document.getElementById('inputAddress').value = sc.address;
@@ -1045,7 +1273,7 @@
       updateDispatchTexts();
     }
 
-    // 予告指令電文と本指令電文の自動組み立て
+    // 予告指令電文と本指令電文の自動組み立て（詳細聴取内容は省略せず全文反映）
     function updateDispatchTexts() {
       const meta = DISASTER_TYPES[currentDisasterType];
       const address = document.getElementById('inputAddress').value.trim() || 'つくば市内、通報地点付近';
@@ -1064,9 +1292,10 @@
       const noticeText = `予告指令。${address}、${landmarkPart}${subType}。詳細聴取中。${unitNames || '直近隊'}、準備。以上、つくば消防。`;
       document.getElementById('noticeDispatchText').value = noticeText;
 
-      // STEP 5: 本指令文（「本指令」を省き指令種別から開始・最後は「以上、つくば消防」）
-      const memoShort = memo ? `${memo.slice(0, 48)}${memo.length > 48 ? '…' : ''}との通報。` : '';
-      const mainText = `${meta.directive}。${address}、${landmarkPart}${subType}。${memoShort}${unitsPart}以上、つくば消防。`;
+      // STEP 5: 本指令文（詳細聴取内容の全文を省略なしで結合）
+      const cleanMemo = memo.replace(/\r?\n/g, '、').replace(/、+/g, '、').replace(/。+$/, '');
+      const memoFull = cleanMemo ? `${cleanMemo}との通報。` : '';
+      const mainText = `${meta.directive}。${address}、${landmarkPart}${subType}。${memoFull}${unitsPart}以上、つくば消防。`;
       document.getElementById('mainDispatchText').value = mainText;
     }
 
