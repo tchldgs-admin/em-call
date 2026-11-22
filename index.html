@@ -48,6 +48,7 @@
     <div class="flex flex-wrap items-center gap-1.5">
       <select id="scenarioSelect" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-sky-500">
         <option value="empty" selected>空のシナリオ（手動入力モード）</option>
+        <option value="random_all">完全ランダム入電（全50シナリオから）</option>
         <option value="fire">通報種別：火災（ランダム入電）</option>
         <option value="rescue">通報種別：救助（ランダム入電）</option>
         <option value="ems">通報種別：救急（ランダム入電）</option>
@@ -1007,7 +1008,7 @@
       }
     }
 
-    // 受話応答（着信停止＆空シナリオまたは種別別ランダム展開 ➡︎ STEP 2へ）
+    // 受話応答（着信停止＆空シナリオまたは種別別・統合ランダム展開 ➡︎ STEP 2へ）
     function answerCall() {
       stopRingtone();
       callState = 'connected';
@@ -1029,9 +1030,18 @@
         return;
       }
 
-      const pool = SCENARIO_POOLS[selectedType];
-      if (pool && pool.length > 0) {
-        const sc = pool[Math.floor(Math.random() * pool.length)];
+      let sc = null;
+      if (selectedType === 'random_all') {
+        const allPools = [].concat(...Object.values(SCENARIO_POOLS));
+        sc = allPools[Math.floor(Math.random() * allPools.length)];
+      } else {
+        const pool = SCENARIO_POOLS[selectedType];
+        if (pool && pool.length > 0) {
+          sc = pool[Math.floor(Math.random() * pool.length)];
+        }
+      }
+
+      if (sc) {
         setDisasterType(sc.disasterType);
         document.getElementById('callerType').value = sc.callerType;
         document.getElementById('inputAddress').value = sc.address;
